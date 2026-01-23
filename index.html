@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>2D Střílečka</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="game-container">
+        <div class="header">
+            <h1>Stealth Špion</h1>
+            <div class="stats">
+                <span>Úroveň: <span id="levelElement">1</span></span>
+                <span>Skóre: <span id="score">0</span></span>
+                <span>Životy: <span id="lives">3</span></span>
+            </div>
+        </div>
+        <div id="mainMenu" class="main-menu">
+            <h2>Vyberte režim hry</h2>
+            <button id="startNewGameBtn" class="menu-btn primary">Hrát od začátku</button>
+            <div class="level-selection">
+                <h3>Nebo vyberte úroveň:</h3>
+                <div class="level-grid">
+                    <button class="level-btn" data-level="1">Úroveň 1</button>
+                    <button class="level-btn" data-level="2">Úroveň 2</button>
+                    <button class="level-btn" data-level="3">Úroveň 3</button>
+                    <button class="level-btn" data-level="4">Úroveň 4</button>
+                    <button class="level-btn" data-level="5">Úroveň 5</button>
+                    <button class="level-btn" data-level="6">Úroveň 6</button>
+                    <button class="level-btn" data-level="7">Úroveň 7</button>
+                    <button class="level-btn" data-level="8">Úroveň 8</button>
+                    <button class="level-btn" data-level="9">Úroveň 9</button>
+                    <button class="level-btn" data-level="10">Úroveň 10</button>
+                </div>
+            </div>
+        </div>
+        <canvas id="gameCanvas" width="1200" height="800" class="hidden"></canvas>
+        <div id="gameOver" class="game-over hidden">
+            <h2 id="gameOverTitle">Konec hry!</h2>
+            <p id="levelInfo"></p>
+            <p>Vaše skóre: <span id="finalScore">0</span></p>
+            <button id="restartBtn">Hrát znovu</button>
+        </div>
+        <div class="controls">
+            <p><strong>Ovládání:</strong></p>
+            <p>WASD - Pohyb | Myš - Míření | Klik - Střelba | ESC - Menu</p>
+            <p><strong>Stavy nepřátel:</strong> Modrý = Hlídka | Oranžový = Pozor | Červený = Boj | Žlutý = Hledání</p>
+        </div>
+    </div>
+    <script src="game.js"></script>
+</body>
+</html>
