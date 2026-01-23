@@ -15,8 +15,10 @@ let currentLevel = 0;
 let totalEnemies = 0;
 let tutorialCompleted = false;
 let tutorialTextVisible = true;
+let playerInvisible = true;
 
 const TILE_SIZE = 40;
+const SPAWN_SAFE_ZONE_RADIUS = 3;
 let VISION_RANGE = 200;
 let HEARING_RANGE = 300;
 let ALERT_DURATION = 5000;
@@ -376,6 +378,101 @@ const healthPickups = [];
 let lastShot = 0;
 const shootCooldown = 500;
 
+let spawnSafeZone = {x: 0, y: 0};
+
+function isInSpawnZone(x, y) {
+    const tileX = Math.floor(x / TILE_SIZE);
+    const tileY = Math.floor(y / TILE_SIZE);
+    const spawnTileX = Math.floor(spawnSafeZone.x / TILE_SIZE);
+    const spawnTileY = Math.floor(spawnSafeZone.y / TILE_SIZE);
+    
+    const distance = Math.sqrt(
+        Math.pow(tileX - spawnTileX, 2) + 
+        Math.pow(tileY - spawnTileY, 2)
+    );
+    
+    return distance <= SPAWN_SAFE_ZONE_RADIUS;
+}
+
+function findPath(startX, startY, endX, endY) {
+    const startTileX = Math.floor(startX / TILE_SIZE);
+    const startTileY = Math.floor(startY / TILE_SIZE);
+    const endTileX = Math.floor(endX / TILE_SIZE);
+    const endTileY = Math.floor(endY / TILE_SIZE);
+    
+    if (!gameMap || startTileY < 0 || startTileY >= gameMap.length || 
+        startTileX < 0 || startTileX >= gameMap[0].length ||
+        endTileY < 0 || endTileY >= gameMap.length || 
+        endTileX < 0 || endTileX >= gameMap[0].length) {
+        return null;
+    }
+    
+    const openSet = [{x: startTileX, y: startTileY, g: 0, h: 0, f: 0, parent: null}];
+    const closedSet = new Set();
+    const openSetMap = new Map();
+    openSetMap.set(`${startTileX},${startTileY}`, openSet[0]);
+    
+    while (openSet.length > 0) {
+        openSet.sort((a, b) => a.f - b.f);
+        const current = openSet.shift();
+        const currentKey = `${current.x},${current.y}`;
+        openSetMap.delete(currentKey);
+        
+        if (current.x === endTileX && current.y === endTileY) {
+            const path = [];
+            let node = current;
+            while (node) {
+                path.unshift({x: node.x * TILE_SIZE + TILE_SIZE / 2, y: node.y * TILE_SIZE + TILE_SIZE / 2});
+                node = node.parent;
+            }
+            return path;
+        }
+        
+        closedSet.add(currentKey);
+        
+        const neighbors = [
+            {x: current.x + 1, y: current.y},
+            {x: current.x - 1, y: current.y},
+            {x: current.x, y: current.y + 1},
+            {x: current.x, y: current.y - 1}
+        ];
+        
+        for (let neighbor of neighbors) {
+            const neighborKey = `${neighbor.x},${neighbor.y}`;
+            
+            if (neighbor.y < 0 || neighbor.y >= gameMap.length || 
+                neighbor.x < 0 || neighbor.x >= gameMap[0].length) {
+                continue;
+            }
+            
+            const tile = gameMap[neighbor.y][neighbor.x];
+            if (tile === 1) continue;
+            
+            if (closedSet.has(neighborKey)) continue;
+            
+            const g = current.g + 1;
+            const h = Math.abs(neighbor.x - endTileX) + Math.abs(neighbor.y - endTileY);
+            const f = g + h;
+            
+            const existingNode = openSetMap.get(neighborKey);
+            if (existingNode && existingNode.g <= g) continue;
+            
+            const newNode = {x: neighbor.x, y: neighbor.y, g: g, h: h, f: f, parent: current};
+            
+            if (existingNode) {
+                const index = openSet.indexOf(existingNode);
+                openSet[index] = newNode;
+                openSetMap.set(neighborKey, newNode);
+            } else {
+                openSet.push(newNode);
+                openSetMap.set(neighborKey, newNode);
+            }
+        }
+    }
+    
+    return null;
+}
+
 class Bullet {
     constructor(x, y, angle, isPlayer = true) {
         this.x = x;
@@ -437,6 +534,15 @@ class Enemy {
         this.shootCooldown = 0;
         this.visionAngle = Math.PI / 3;
         this.visionRange = VISION_RANGE;
+        this.stuckTimer = 0;
+        this.lastX = x;
+        this.lastY = y;
+        this.path = [];
+        this.pathIndex = 0;
+        this.randomPatrol = false;
+        this.randomPatrolTimer = 0;
+        this.originalPatrolPoints = patrolPoints ? [...patrolPoints] : [];
+        this.returningToPatrol = false;
     }
 
     update() {
@@ -468,38 +574,110 @@ class Enemy {
     }
 
     patrol() {
-        if (this.patrolPoints.length === 0) return;
-
-        const target = this.patrolPoints[this.currentPatrolIndex];
-        const dx = target.x - this.x;
-        const dy = target.y - this.y;
-        const distance = Math.sqrt(dx * dx + dy * dy);
-
-        if (distance < 5) {
-            this.currentPatrolIndex = (this.currentPatrolIndex + 1) % this.patrolPoints.length;
+        if (this.randomPatrol) {
+            this.randomPatrolTimer--;
+            
+            if (this.randomPatrolTimer <= 0 || this.path.length === 0 || this.pathIndex >= this.path.length) {
+                let attempts = 0;
+                let randomX, randomY, validTarget = false;
+                
+                while (!validTarget && attempts < 10) {
+                    randomX = Math.random() * (gameMap[0].length * TILE_SIZE);
+                    randomY = Math.random() * (gameMap.length * TILE_SIZE);
+                    
+                    const tileX = Math.floor(randomX / TILE_SIZE);
+                    const tileY = Math.floor(randomY / TILE_SIZE);
+                    
+                    if (tileY >= 0 && tileY < gameMap.length && tileX >= 0 && tileX < gameMap[0].length) {
+                        if (gameMap[tileY][tileX] !== 1) {
+                            validTarget = true;
+                        }
+                    }
+                    attempts++;
+                }
+                
+                if (validTarget) {
+                    this.path = findPath(this.x, this.y, randomX, randomY);
+                    this.pathIndex = 0;
+                    this.randomPatrolTimer = 300 + Math.random() * 300;
+                    
+                    if (!this.path || this.path.length === 0) {
+                        this.randomPatrolTimer = 0;
+                        return;
+                    }
+                }
+            }
+            
+            if (this.path && this.path.length > 0 && this.pathIndex < this.path.length) {
+                this.followPath();
+            }
         } else {
-            this.angle = Math.atan2(dy, dx);
-            this.move();
+            if (this.patrolPoints.length === 0) return;
+
+            const target = this.patrolPoints[this.currentPatrolIndex];
+            const dx = target.x - this.x;
+            const dy = target.y - this.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+
+            if (distance < 15) {
+                this.currentPatrolIndex = (this.currentPatrolIndex + 1) % this.patrolPoints.length;
+                this.path = [];
+                this.pathIndex = 0;
+                return;
+            }
+            
+            if (this.path.length === 0 || this.pathIndex >= this.path.length) {
+                const newPath = findPath(this.x, this.y, target.x, target.y);
+                if (newPath && newPath.length > 0) {
+                    this.path = newPath;
+                    this.pathIndex = 0;
+                }
+            }
+            
+            if (this.path && this.path.length > 0 && this.pathIndex < this.path.length) {
+                this.followPath();
+            } else {
+                this.angle = Math.atan2(dy, dx);
+                this.move();
+            }
         }
     }
 
     alert() {
         this.alertTimer -= 16;
         
-        const dx = this.searchX - this.x;
-        const dy = this.searchY - this.y;
-        const distance = Math.sqrt(dx * dx + dy * dy);
-
-        if (distance > 10) {
-            this.angle = Math.atan2(dy, dx);
-            this.move();
+        if (this.path.length === 0) {
+            this.path = findPath(this.x, this.y, this.searchX, this.searchY);
+            this.pathIndex = 0;
+        }
+        
+        if (this.path && this.path.length > 0) {
+            this.followPath();
         } else {
-            this.angle += 0.03;
+            const dx = this.searchX - this.x;
+            const dy = this.searchY - this.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+
+            if (distance > 10) {
+                if (!this.hasWallBetween(this.x, this.y, this.searchX, this.searchY)) {
+                    this.angle = Math.atan2(dy, dx);
+                }
+                this.move();
+            } else {
+                this.angle += 0.03;
+                this.stuckTimer = 0;
+            }
         }
 
         if (this.alertTimer <= 0) {
-            this.state = 'search';
-            this.searchTimer = SEARCH_DURATION;
+            if (this.randomPatrol) {
+                this.state = 'search';
+                this.searchTimer = SEARCH_DURATION;
+                this.path = [];
+            } else {
+                this.state = 'patrol';
+                this.patrolPoints = [...this.originalPatrolPoints];
+            }
         }
     }
 
@@ -532,30 +710,136 @@ class Enemy {
     search() {
         this.searchTimer -= 16;
 
-        const dx = this.searchX - this.x;
-        const dy = this.searchY - this.y;
-        const distance = Math.sqrt(dx * dx + dy * dy);
-
-        if (distance > 10) {
-            this.angle = Math.atan2(dy, dx);
-            this.move();
+        if (this.path.length === 0) {
+            this.path = findPath(this.x, this.y, this.searchX, this.searchY);
+            this.pathIndex = 0;
+        }
+        
+        if (this.path && this.path.length > 0) {
+            this.followPath();
         } else {
-            this.angle += 0.05;
+            const dx = this.searchX - this.x;
+            const dy = this.searchY - this.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+
+            if (distance > 10) {
+                if (!this.hasWallBetween(this.x, this.y, this.searchX, this.searchY)) {
+                    this.angle = Math.atan2(dy, dx);
+                }
+                this.move();
+            } else {
+                this.angle += 0.05;
+                this.stuckTimer = 0;
+            }
         }
 
         if (this.searchTimer <= 0) {
             this.state = 'patrol';
+            this.path = [];
+            if (!this.randomPatrol) {
+                this.patrolPoints = [...this.originalPatrolPoints];
+            }
         }
     }
 
     move() {
-        const newX = this.x + Math.cos(this.angle) * this.speed;
-        const newY = this.y + Math.sin(this.angle) * this.speed;
+        const currentSpeed = this.state === 'patrol' ? 1.0 : this.speed;
+        
+        let moveX = Math.cos(this.angle) * currentSpeed;
+        let moveY = Math.sin(this.angle) * currentSpeed;
+        
+        const avoidance = this.avoidOtherEnemies();
+        if (avoidance) {
+            moveX += avoidance.x;
+            moveY += avoidance.y;
+        }
+        
+        const newX = this.x + moveX;
+        const newY = this.y + moveY;
 
         if (!this.checkWallCollision(newX, newY)) {
             this.x = newX;
             this.y = newY;
+            this.stuckTimer = 0;
+        } else {
+            this.stuckTimer++;
+            if (this.stuckTimer > 10) {
+                this.tryAlternativeAngles();
+            }
         }
+    }
+
+    avoidOtherEnemies() {
+        const avoidanceRadius = 30;
+        let avoidX = 0;
+        let avoidY = 0;
+        let nearbyCount = 0;
+        
+        for (let other of enemies) {
+            if (other === this) continue;
+            
+            const dx = this.x - other.x;
+            const dy = this.y - other.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            
+            if (distance < avoidanceRadius && distance > 0) {
+                avoidX += (dx / distance) * 0.5;
+                avoidY += (dy / distance) * 0.5;
+                nearbyCount++;
+            }
+        }
+        
+        if (nearbyCount > 0) {
+            return {x: avoidX, y: avoidY};
+        }
+        
+        return null;
+    }
+
+    followPath() {
+        if (!this.path || this.pathIndex >= this.path.length) {
+            return;
+        }
+        
+        const target = this.path[this.pathIndex];
+        const dx = target.x - this.x;
+        const dy = target.y - this.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        
+        const threshold = this.state === 'patrol' ? 15 : 10;
+        
+        if (distance < threshold) {
+            this.pathIndex++;
+        } else {
+            this.angle = Math.atan2(dy, dx);
+            this.move();
+        }
+    }
+
+    tryAlternativeAngles() {
+        const angles = [
+            this.angle + Math.PI / 4,
+            this.angle - Math.PI / 4,
+            this.angle + Math.PI / 2,
+            this.angle - Math.PI / 2,
+            this.angle + Math.PI * 3 / 4,
+            this.angle - Math.PI * 3 / 4
+        ];
+
+        for (let testAngle of angles) {
+            const testX = this.x + Math.cos(testAngle) * this.speed;
+            const testY = this.y + Math.sin(testAngle) * this.speed;
+            
+            if (!this.checkWallCollision(testX, testY)) {
+                this.angle = testAngle;
+                this.x = testX;
+                this.y = testY;
+                this.stuckTimer = 0;
+                return;
+            }
+        }
+        
+        this.stuckTimer = 0;
     }
 
     checkWallCollision(x, y) {
@@ -570,6 +854,8 @@ class Enemy {
     }
 
     canSeePlayer() {
+        if (playerInvisible) return false;
+        
         const dx = player.x - this.x;
         const dy = player.y - this.y;
         const distance = Math.sqrt(dx * dx + dy * dy);
@@ -605,17 +891,20 @@ class Enemy {
     }
 
     checkSoundEvents() {
+        if (playerInvisible) return;
+        
         for (let sound of soundEvents) {
             const dx = sound.x - this.x;
             const dy = sound.y - this.y;
             const distance = Math.sqrt(dx * dx + dy * dy);
 
             if (distance < HEARING_RANGE) {
-                if (this.state === 'patrol' || this.state === 'alert' || this.state === 'search') {
+                if (this.state === 'patrol' || this.state === 'alert' || this.state === 'search' || this.state === 'combat') {
                     this.state = 'alert';
                     this.alertTimer = ALERT_DURATION;
                     this.searchX = sound.x;
                     this.searchY = sound.y;
+                    this.path = [];
                 }
             }
         }
@@ -715,6 +1004,8 @@ class Boss extends Enemy {
         this.visionAngle = Math.PI / 2;
         this.visionRange = VISION_RANGE * 1.5;
         this.isBoss = true;
+        this.randomPatrol = false;
+        this.originalPatrolPoints = patrolPoints ? [...patrolPoints] : [];
     }
 
     shoot() {
@@ -834,12 +1125,22 @@ function drawMap() {
 }
 
 function drawPlayer() {
-    ctx.fillStyle = player.color;
+    if (playerInvisible) {
+        ctx.fillStyle = 'rgba(0, 255, 0, 0.3)';
+    } else {
+        ctx.fillStyle = player.color;
+    }
+    
     ctx.beginPath();
     ctx.arc(player.x, player.y, player.size / 2, 0, Math.PI * 2);
     ctx.fill();
 
-    ctx.strokeStyle = '#ffffff';
+    if (playerInvisible) {
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+    } else {
+        ctx.strokeStyle = '#ffffff';
+    }
+    
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.moveTo(player.x, player.y);
@@ -882,6 +1183,10 @@ function updatePlayer() {
     if (dx !== 0 || dy !== 0) {
         if (currentLevel === 0 && tutorialTextVisible) {
             tutorialTextVisible = false;
+        }
+        
+        if (playerInvisible) {
+            playerInvisible = false;
         }
         
         const length = Math.sqrt(dx * dx + dy * dy);
@@ -978,7 +1283,7 @@ function initLevel(level) {
     
     VISION_RANGE = 200 + level * 30;
     HEARING_RANGE = 300 + level * 50;
-    ENEMY_SPEED = 1.5 + level * 0.3;
+    ENEMY_SPEED = Math.min(3.0, 1.5 + level * 0.15);
     ALERT_DURATION = Math.max(3000, 5000 - level * 500);
     SEARCH_DURATION = 8000 + level * 2000;
     
@@ -986,20 +1291,29 @@ function initLevel(level) {
         const playerPos = findValidSpawnPosition(levelData.playerStart.x, levelData.playerStart.y);
         player.x = playerPos.x;
         player.y = playerPos.y;
+        spawnSafeZone = {x: player.x, y: player.y};
     } else {
         const playerPos = findValidSpawnPosition(100, 100);
         player.x = playerPos.x;
         player.y = playerPos.y;
+        spawnSafeZone = {x: player.x, y: player.y};
     }
     
-    levelData.enemies.forEach(enemyData => {
+    playerInvisible = true;
+    
+    levelData.enemies.forEach((enemyData, index) => {
         const spawnPos = findValidSpawnPosition(enemyData.x, enemyData.y);
         
         const validatedPatrol = enemyData.patrol.map(point => {
             return findValidSpawnPosition(point.x, point.y);
         });
         
-        enemies.push(new Enemy(spawnPos.x, spawnPos.y, validatedPatrol));
+        const enemy = new Enemy(spawnPos.x, spawnPos.y, validatedPatrol);
+        
+        enemy.randomPatrol = true;
+        enemy.randomPatrolTimer = 300 + Math.random() * 300;
+        
+        enemies.push(enemy);
     });
     
     if (levelData.boss) {
@@ -1007,7 +1321,10 @@ function initLevel(level) {
         const validatedPatrol = levelData.boss.patrol.map(point => {
             return findValidSpawnPosition(point.x, point.y);
         });
-        enemies.push(new Boss(bossPos.x, bossPos.y, validatedPatrol));
+        const boss = new Boss(bossPos.x, bossPos.y, validatedPatrol);
+        boss.randomPatrol = true;
+        boss.randomPatrolTimer = 300 + Math.random() * 300;
+        enemies.push(boss);
     }
     
     healthPickups.length = 0;
