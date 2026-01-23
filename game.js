@@ -11,8 +11,10 @@ let score = 0;
 let lives = 3;
 let mouseX = 0;
 let mouseY = 0;
-let currentLevel = 1;
+let currentLevel = 0;
 let totalEnemies = 0;
+let tutorialCompleted = false;
+let tutorialTextVisible = true;
 
 const TILE_SIZE = 40;
 let VISION_RANGE = 200;
@@ -38,6 +40,30 @@ const player = {
 };
 
 const levels = [
+    {
+        map: [
+            [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+            [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+            [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+            [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+            [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+            [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+            [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+            [1,0,0,0,0,0,0,0,0,2,0,0,0,0,0,0,0,0,0,1],
+            [1,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1],
+            [1,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1],
+            [1,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1],
+            [1,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1],
+            [1,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1],
+            [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+            [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
+        ],
+        enemies: [
+            {x: 600, y: 480, patrol: [{x: 600, y: 480}, {x: 600, y: 480}]}
+        ],
+        playerStart: {x: 100, y: 100},
+        tutorial: true
+    },
     {
         map: [
             [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
@@ -824,6 +850,26 @@ function drawPlayer() {
     ctx.stroke();
 }
 
+function drawTutorial() {
+    if (!tutorialTextVisible) return;
+    
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.9)';
+    ctx.fillRect(0, 0, canvas.width, 120);
+    
+    ctx.fillStyle = '#00ff00';
+    ctx.font = 'bold 22px Arial';
+    ctx.fillText('TUTORIAL - Úroveň 0', 20, 30);
+    
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '16px Arial';
+    ctx.fillText('WASD - Pohyb  |  Myš - Míření  |  Klik - Střelba  |  ESC - Menu', 20, 60);
+    ctx.fillText('Modří = Nepřátelé  |  Oranžové = Dveře  |  Šedé = Zdi  |  Buď potichu!', 20, 85);
+    
+    ctx.fillStyle = '#ffaa00';
+    ctx.font = 'bold 16px Arial';
+    ctx.fillText('Stiskni ENTER pro přeskočení tutorialu', 20, 110);
+}
+
 function updatePlayer() {
     let dx = 0;
     let dy = 0;
@@ -834,6 +880,10 @@ function updatePlayer() {
     if (keys.d) dx += 1;
 
     if (dx !== 0 || dy !== 0) {
+        if (currentLevel === 0 && tutorialTextVisible) {
+            tutorialTextVisible = false;
+        }
+        
         const length = Math.sqrt(dx * dx + dy * dy);
         dx /= length;
         dy /= length;
@@ -918,7 +968,7 @@ function shoot() {
 }
 
 function initLevel(level) {
-    const levelData = levels[level - 1];
+    const levelData = levels[level];
     gameMap = levelData.map;
     
     enemies.length = 0;
@@ -926,11 +976,11 @@ function initLevel(level) {
     particles.length = 0;
     soundEvents.length = 0;
     
-    VISION_RANGE = 200 + (level - 1) * 30;
-    HEARING_RANGE = 300 + (level - 1) * 50;
-    ENEMY_SPEED = 1.5 + (level - 1) * 0.3;
-    ALERT_DURATION = Math.max(3000, 5000 - (level - 1) * 500);
-    SEARCH_DURATION = 8000 + (level - 1) * 2000;
+    VISION_RANGE = 200 + level * 30;
+    HEARING_RANGE = 300 + level * 50;
+    ENEMY_SPEED = 1.5 + level * 0.3;
+    ALERT_DURATION = Math.max(3000, 5000 - level * 500);
+    SEARCH_DURATION = 8000 + level * 2000;
     
     if (levelData.playerStart) {
         const playerPos = findValidSpawnPosition(levelData.playerStart.x, levelData.playerStart.y);
@@ -1021,12 +1071,14 @@ function updateGame() {
             if (bullet.collidesWith(player) && lives > 0) {
                 createExplosion(player.x, player.y, '#ff0000');
                 bullets.splice(bulletIndex, 1);
-                lives--;
-                livesElement.textContent = lives;
-                if (lives <= 0) {
-                    lives = 0;
+                if (currentLevel !== 0) {
+                    lives--;
                     livesElement.textContent = lives;
-                    endGame();
+                    if (lives <= 0) {
+                        lives = 0;
+                        livesElement.textContent = lives;
+                        endGame();
+                    }
                 }
             }
         }
@@ -1041,6 +1093,11 @@ function updateGame() {
         pickup.update();
         pickup.draw();
     });
+    
+    const levelData = levels[currentLevel];
+    if (levelData && levelData.tutorial) {
+        drawTutorial();
+    }
     
     if (enemies.length === 0 && totalEnemies > 0) {
         checkLevelComplete();
@@ -1089,13 +1146,16 @@ function restartGame() {
     const wasDead = lives <= 0;
     
     if (wasDead) {
-        currentLevel = 1;
+        currentLevel = tutorialCompleted ? 1 : 0;
         score = 0;
         lives = 3;
-    } else if (wasComplete && currentLevel < levels.length) {
+    } else if (wasComplete && currentLevel < levels.length - 1) {
+        if (currentLevel === 0) {
+            tutorialCompleted = true;
+        }
         currentLevel++;
-    } else if (wasComplete && currentLevel >= levels.length) {
-        currentLevel = 1;
+    } else if (wasComplete && currentLevel >= levels.length - 1) {
+        currentLevel = tutorialCompleted ? 1 : 0;
         score = 0;
         lives = 3;
     }
@@ -1118,6 +1178,12 @@ document.addEventListener('keydown', (e) => {
     if (e.key === 'd' || e.key === 'D') keys.d = true;
     if (e.key === 'Escape') {
         returnToMenu();
+    }
+    if (e.key === 'Enter' && currentLevel === 0 && gameRunning) {
+        tutorialCompleted = true;
+        currentLevel = 1;
+        initLevel(currentLevel);
+        document.getElementById('levelElement').textContent = currentLevel;
     }
 });
 
@@ -1158,6 +1224,7 @@ function startGame(level) {
     score = 0;
     lives = 3;
     gameRunning = true;
+    tutorialTextVisible = (level === 0);
     
     mainMenu.classList.add('hidden');
     canvas.classList.remove('hidden');
@@ -1171,7 +1238,7 @@ function startGame(level) {
 }
 
 startNewGameBtn.addEventListener('click', () => {
-    startGame(1);
+    startGame(0);
 });
 
 levelBtns.forEach(btn => {
