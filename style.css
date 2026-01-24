@@ -145,6 +145,21 @@ body {
     box-shadow: 0 5px 20px rgba(76, 175, 80, 0.5);
 }
 
+.menu-btn.progressive {
+    background: linear-gradient(135deg, #ff6b35 0%, #f7931e 100%);
+    animation: pulse 2s ease-in-out infinite;
+}
+
+.menu-btn.progressive:hover {
+    background: linear-gradient(135deg, #ff5722 0%, #ff9800 100%);
+    box-shadow: 0 5px 20px rgba(255, 107, 53, 0.6);
+}
+
+@keyframes pulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.02); }
+}
+
 .level-selection {
     margin-top: 20px;
 }
@@ -172,4 +187,118 @@ body {
     background: #1976D2;
     transform: translateY(-3px);
     box-shadow: 0 5px 15px rgba(33, 150, 243, 0.5);
+}
+
+.leaderboard-section {
+    margin: 30px 0;
+    padding: 20px;
+    background: rgba(0, 0, 0, 0.5);
+    border-radius: 10px;
+}
+
+.submit-score-form {
+    margin-bottom: 30px;
+}
+
+.submit-score-form h3 {
+    font-size: 1.3em;
+    margin-bottom: 15px;
+    color: #4CAF50;
+}
+
+.submit-score-form input {
+    padding: 12px 20px;
+    font-size: 1.1em;
+    border: 2px solid #4CAF50;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.1);
+    color: white;
+    margin-right: 10px;
+    width: 250px;
+}
+
+.submit-score-form input::placeholder {
+    color: rgba(255, 255, 255, 0.5);
+}
+
+.submit-score-form button {
+    padding: 12px 30px;
+    font-size: 1.1em;
+    background: #4CAF50;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.3s;
+    font-weight: bold;
+}
+
+.submit-score-form button:hover {
+    background: #45a049;
+    transform: scale(1.05);
+}
+
+.submit-message {
+    margin-top: 10px;
+    font-size: 1em;
+    color: #4CAF50;
+}
+
+.leaderboard h3 {
+    font-size: 1.5em;
+    margin-bottom: 15px;
+    color: #FFD700;
+}
+
+.leaderboard-list {
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.leaderboard-entry {
+    display: flex;
+    justify-content: space-between;
+    padding: 10px 15px;
+    margin: 5px 0;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 5px;
+    font-size: 1.1em;
+}
+
+.leaderboard-entry:nth-child(1) {
+    background: linear-gradient(135deg, #FFD700 0%, #FFA500 100%);
+    color: #000;
+    font-weight: bold;
+}
+
+.leaderboard-entry:nth-child(2) {
+    background: linear-gradient(135deg, #C0C0C0 0%, #808080 100%);
+    color: #000;
+    font-weight: bold;
+}
+
+.leaderboard-entry:nth-child(3) {
+    background: linear-gradient(135deg, #CD7F32 0%, #8B4513 100%);
+    color: #fff;
+    font-weight: bold;
+}
+
+.leaderboard-rank {
+    font-weight: bold;
+    margin-right: 10px;
+}
+
+.leaderboard-name {
+    flex: 1;
+}
+
+.leaderboard-score {
+    font-weight: bold;
+    color: #4CAF50;
+}
+
+.leaderboard-entry:nth-child(1) .leaderboard-score,
+.leaderboard-entry:nth-child(2) .leaderboard-score,
+.leaderboard-entry:nth-child(3) .leaderboard-score {
+    color: inherit;
 }
