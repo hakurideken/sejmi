@@ -23,7 +23,7 @@ let VISION_RANGE = 200;
 let HEARING_RANGE = 300;
 let ALERT_DURATION = 5000;
 let SEARCH_DURATION = 8000;
-let ENEMY_SPEED = 1.5;
+let ENEMY_SPEED = 1.2;
 
 const keys = {
     w: false,
@@ -36,7 +36,7 @@ const player = {
     x: 100,
     y: 100,
     size: 20,
-    speed: 3,
+    speed: 2,
     angle: 0,
     color: '#00ff00'
 };
@@ -743,7 +743,7 @@ class Enemy {
     }
 
     move() {
-        const currentSpeed = this.state === 'patrol' ? 1.0 : this.speed;
+        const currentSpeed = this.state === 'patrol' ? 0.7 : this.speed;
         
         let moveX = Math.cos(this.angle) * currentSpeed;
         let moveY = Math.sin(this.angle) * currentSpeed;
@@ -916,31 +916,58 @@ class Enemy {
         bullets.push(new Bullet(bulletX, bulletY, this.angle, false));
     }
 
+    drawVisionCone(color) {
+        const rays = 30;
+        const points = [{x: this.x, y: this.y}];
+        
+        for (let i = 0; i <= rays; i++) {
+            const rayAngle = this.angle - this.visionAngle / 2 + (this.visionAngle * i / rays);
+            const rayDx = Math.cos(rayAngle);
+            const rayDy = Math.sin(rayAngle);
+            
+            let hitDistance = this.visionRange;
+            
+            for (let dist = 0; dist <= this.visionRange; dist += 5) {
+                const checkX = this.x + rayDx * dist;
+                const checkY = this.y + rayDy * dist;
+                
+                const tileX = Math.floor(checkX / TILE_SIZE);
+                const tileY = Math.floor(checkY / TILE_SIZE);
+                
+                if (tileY >= 0 && tileY < gameMap.length && tileX >= 0 && tileX < gameMap[0].length) {
+                    if (gameMap[tileY][tileX] === 1) {
+                        hitDistance = dist;
+                        break;
+                    }
+                } else {
+                    hitDistance = dist;
+                    break;
+                }
+            }
+            
+            points.push({
+                x: this.x + rayDx * hitDistance,
+                y: this.y + rayDy * hitDistance
+            });
+        }
+        
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.moveTo(points[0].x, points[0].y);
+        for (let i = 1; i < points.length; i++) {
+            ctx.lineTo(points[i].x, points[i].y);
+        }
+        ctx.closePath();
+        ctx.fill();
+    }
+
     draw() {
         if (this.state === 'combat' || this.state === 'alert') {
-            ctx.fillStyle = 'rgba(255, 0, 0, 0.1)';
-            ctx.beginPath();
-            ctx.arc(this.x, this.y, this.visionRange, 
-                    this.angle - this.visionAngle / 2, 
-                    this.angle + this.visionAngle / 2);
-            ctx.lineTo(this.x, this.y);
-            ctx.fill();
+            this.drawVisionCone('rgba(255, 0, 0, 0.1)');
         } else if (this.state === 'search') {
-            ctx.fillStyle = 'rgba(255, 165, 0, 0.1)';
-            ctx.beginPath();
-            ctx.arc(this.x, this.y, this.visionRange, 
-                    this.angle - this.visionAngle / 2, 
-                    this.angle + this.visionAngle / 2);
-            ctx.lineTo(this.x, this.y);
-            ctx.fill();
+            this.drawVisionCone('rgba(255, 165, 0, 0.1)');
         } else {
-            ctx.fillStyle = 'rgba(100, 100, 100, 0.1)';
-            ctx.beginPath();
-            ctx.arc(this.x, this.y, this.visionRange, 
-                    this.angle - this.visionAngle / 2, 
-                    this.angle + this.visionAngle / 2);
-            ctx.lineTo(this.x, this.y);
-            ctx.fill();
+            this.drawVisionCone('rgba(100, 100, 100, 0.1)');
         }
 
         let bodyColor = '#4444ff';
