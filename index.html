@@ -18,6 +18,7 @@
         </div>
         <div id="mainMenu" class="main-menu">
             <h2>Vyberte režim hry</h2>
+            <button id="startProgressiveBtn" class="menu-btn progressive">🔥 Progresivní mód (Survival)</button>
             <button id="startNewGameBtn" class="menu-btn primary">Hrát od začátku (Tutorial)</button>
             <div class="level-selection">
                 <h3>Nebo vyberte úroveň:</h3>
@@ -40,6 +41,23 @@
             <h2 id="gameOverTitle">Konec hry!</h2>
             <p id="levelInfo"></p>
             <p>Vaše skóre: <span id="finalScore">0</span></p>
+            
+            <div id="leaderboardSection" class="leaderboard-section hidden">
+                <div id="submitScoreForm" class="submit-score-form">
+                    <h3>Odeslat skóre do žebříčku</h3>
+                    <input type="text" id="playerName" placeholder="Zadej své jméno" maxlength="20">
+                    <button id="submitScoreBtn">Odeslat skóre</button>
+                    <p id="submitMessage" class="submit-message"></p>
+                </div>
+                
+                <div class="leaderboard">
+                    <h3>🏆 Žebříček</h3>
+                    <div id="leaderboardList" class="leaderboard-list">
+                        <p>Načítání...</p>
+                    </div>
+                </div>
+            </div>
+            
             <button id="restartBtn">Hrát znovu</button>
         </div>
         <div class="controls">

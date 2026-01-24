@@ -1,0 +1,15 @@
+{
+  "name": "sejmi-game",
+  "version": "1.0.0",
+  "description": "Stealth Špion - Top-down stealth game",
+  "main": "game.js",
+  "scripts": {
+    "dev": "netlify dev"
+  },
+  "dependencies": {
+    "@neondatabase/serverless": "^0.9.0"
+  },
+  "devDependencies": {
+    "netlify-cli": "^17.0.0"
+  }
+}

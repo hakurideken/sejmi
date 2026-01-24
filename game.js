@@ -16,6 +16,10 @@ let totalEnemies = 0;
 let tutorialCompleted = false;
 let tutorialTextVisible = true;
 let playerInvisible = true;
+let gameMode = 'classic';
+let progressiveWave = 1;
+let enemiesKilledThisWave = 0;
+let progressiveDifficulty = 1;
 
 const TILE_SIZE = 40;
 const SPAWN_SAFE_ZONE_RADIUS = 3;
@@ -367,6 +371,29 @@ const levels = [
     }
 ];
 
+const progressiveMap = {
+    map: [
+        [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+        [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+        [1,0,1,1,1,0,0,0,1,1,1,1,1,0,1,1,1,1,1,0,0,0,1,0,1],
+        [1,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,1],
+        [1,0,1,0,0,1,1,1,0,0,0,0,0,1,1,1,0,0,0,1,1,0,1,0,1],
+        [1,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,1,0,0,0,1],
+        [1,0,0,0,0,1,0,0,0,1,1,2,1,1,0,1,0,0,0,0,1,0,0,0,1],
+        [1,0,1,0,0,0,0,0,0,1,0,0,0,1,0,0,0,0,0,0,0,0,1,0,1],
+        [1,0,1,1,0,0,0,0,0,2,0,0,0,2,0,0,0,0,0,0,1,1,1,0,1],
+        [1,0,0,0,0,0,0,0,0,1,0,0,0,1,0,0,0,0,0,0,0,0,0,0,1],
+        [1,0,0,0,0,1,0,0,0,1,1,2,1,1,0,1,0,0,0,0,1,0,0,0,1],
+        [1,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,1,0,0,0,1],
+        [1,0,1,0,0,1,1,1,0,0,0,0,0,1,1,1,0,0,0,1,1,0,1,0,1],
+        [1,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,1],
+        [1,0,1,1,1,0,0,0,1,1,1,1,1,0,1,1,1,1,1,0,0,0,1,0,1],
+        [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+        [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
+    ],
+    playerStart: {x: 500, y: 320}
+};
+
 let gameMap = [];
 
 const bullets = [];
@@ -543,6 +570,7 @@ class Enemy {
         this.randomPatrolTimer = 0;
         this.originalPatrolPoints = patrolPoints ? [...patrolPoints] : [];
         this.returningToPatrol = false;
+        this.pauseTimer = 0;
     }
 
     update() {
@@ -563,11 +591,12 @@ class Enemy {
                 break;
         }
 
-        if (this.canSeePlayer()) {
+        if (this.canSeePlayer() && this.state !== 'combat') {
             this.lastKnownPlayerX = player.x;
             this.lastKnownPlayerY = player.y;
             this.state = 'combat';
             this.alertTimer = ALERT_DURATION;
+            this.pauseTimer = 0;
         }
 
         this.checkSoundEvents();
@@ -684,26 +713,40 @@ class Enemy {
     combat() {
         this.alertTimer -= 16;
 
-        const dx = this.lastKnownPlayerX - this.x;
-        const dy = this.lastKnownPlayerY - this.y;
-        const distance = Math.sqrt(dx * dx + dy * dy);
+        if (this.canSeePlayer()) {
+            this.lastKnownPlayerX = player.x;
+            this.lastKnownPlayerY = player.y;
+            this.pauseTimer = 0;
+            
+            const dx = this.lastKnownPlayerX - this.x;
+            const dy = this.lastKnownPlayerY - this.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
 
-        this.angle = Math.atan2(dy, dx);
+            this.angle = Math.atan2(dy, dx);
 
-        if (distance > 150) {
-            this.move();
-        }
+            if (distance > 150) {
+                this.move();
+            }
 
-        if (this.canSeePlayer() && this.shootCooldown === 0) {
-            this.shoot();
-            this.shootCooldown = 1000;
-        }
-
-        if (this.alertTimer <= 0 && !this.canSeePlayer()) {
-            this.state = 'search';
-            this.searchTimer = SEARCH_DURATION;
-            this.searchX = this.lastKnownPlayerX;
-            this.searchY = this.lastKnownPlayerY;
+            if (this.shootCooldown === 0) {
+                this.shoot();
+                this.shootCooldown = 1000;
+            }
+        } else {
+            if (this.pauseTimer === 0) {
+                this.pauseTimer = 1000;
+            }
+            
+            this.pauseTimer -= 16;
+            
+            if (this.pauseTimer <= 0) {
+                this.state = 'search';
+                this.searchTimer = SEARCH_DURATION;
+                this.searchX = this.lastKnownPlayerX;
+                this.searchY = this.lastKnownPlayerY;
+                this.path = [];
+                this.pauseTimer = 0;
+            }
         }
     }
 
@@ -1195,7 +1238,7 @@ function drawTutorial() {
     
     ctx.fillStyle = '#ffaa00';
     ctx.font = 'bold 16px Arial';
-    ctx.fillText('Stiskni ENTER pro přeskočení tutorialu', 20, 110);
+    ctx.fillText('Stiskni ENTER pro přeskočení tutorialu  |  Tento text zmizí po pohybu', 20, 110);
 }
 
 function updatePlayer() {
@@ -1310,7 +1353,7 @@ function initLevel(level) {
     
     VISION_RANGE = 200 + level * 30;
     HEARING_RANGE = 300 + level * 50;
-    ENEMY_SPEED = Math.min(3.0, 1.5 + level * 0.15);
+    ENEMY_SPEED = Math.min(2.2, 1.2 + level * 0.1);
     ALERT_DURATION = Math.max(3000, 5000 - level * 500);
     SEARCH_DURATION = 8000 + level * 2000;
     
@@ -1365,6 +1408,81 @@ function initLevel(level) {
     totalEnemies = enemies.length;
 }
 
+function initProgressiveMode() {
+    gameMap = progressiveMap.map;
+    gameMode = 'progressive';
+    progressiveWave = 1;
+    enemiesKilledThisWave = 0;
+    progressiveDifficulty = 1;
+    
+    enemies.length = 0;
+    bullets.length = 0;
+    particles.length = 0;
+    soundEvents.length = 0;
+    healthPickups.length = 0;
+    
+    const playerPos = findValidSpawnPosition(progressiveMap.playerStart.x, progressiveMap.playerStart.y);
+    player.x = playerPos.x;
+    player.y = playerPos.y;
+    spawnSafeZone = {x: player.x, y: player.y};
+    
+    playerInvisible = true;
+    
+    VISION_RANGE = 200;
+    HEARING_RANGE = 300;
+    ENEMY_SPEED = 1.2;
+    ALERT_DURATION = 5000;
+    SEARCH_DURATION = 8000;
+    
+    spawnProgressiveWave();
+}
+
+function spawnProgressiveWave() {
+    const enemiesInWave = Math.min(1 + Math.floor(progressiveWave / 2), 8);
+    enemiesKilledThisWave = 0;
+    
+    progressiveDifficulty = 1 + (progressiveWave - 1) * 0.05;
+    VISION_RANGE = Math.min(400, 200 + progressiveWave * 10);
+    HEARING_RANGE = Math.min(600, 300 + progressiveWave * 20);
+    ENEMY_SPEED = Math.min(2.2, 1.2 + progressiveWave * 0.05);
+    
+    for (let i = 0; i < enemiesInWave; i++) {
+        let spawnX, spawnY, validSpawn = false;
+        let attempts = 0;
+        
+        while (!validSpawn && attempts < 50) {
+            spawnX = Math.random() * (gameMap[0].length * TILE_SIZE);
+            spawnY = Math.random() * (gameMap.length * TILE_SIZE);
+            
+            const tileX = Math.floor(spawnX / TILE_SIZE);
+            const tileY = Math.floor(spawnY / TILE_SIZE);
+            
+            if (tileY >= 0 && tileY < gameMap.length && tileX >= 0 && tileX < gameMap[0].length) {
+                if (gameMap[tileY][tileX] === 0) {
+                    const distToPlayer = Math.sqrt(
+                        Math.pow(spawnX - player.x, 2) + 
+                        Math.pow(spawnY - player.y, 2)
+                    );
+                    
+                    if (distToPlayer > 200) {
+                        validSpawn = true;
+                    }
+                }
+            }
+            attempts++;
+        }
+        
+        if (validSpawn) {
+            const enemy = new Enemy(spawnX, spawnY, []);
+            enemy.randomPatrol = true;
+            enemy.randomPatrolTimer = 300 + Math.random() * 300;
+            enemies.push(enemy);
+        }
+    }
+    
+    totalEnemies = enemies.length;
+}
+
 function updateGame() {
     if (!gameRunning) return;
 
@@ -1408,6 +1526,18 @@ function updateGame() {
                         bullets.splice(bulletIndex, 1);
                         score += 100;
                         scoreElement.textContent = score;
+                        
+                        if (gameMode === 'progressive') {
+                            enemiesKilledThisWave++;
+                            if (enemiesKilledThisWave >= totalEnemies) {
+                                progressiveWave++;
+                                setTimeout(() => {
+                                    if (gameRunning) {
+                                        spawnProgressiveWave();
+                                    }
+                                }, 2000);
+                            }
+                        }
                     }
                 }
             });
@@ -1464,7 +1594,18 @@ function endGame() {
     gameRunning = false;
     finalScoreElement.textContent = score;
     document.getElementById('gameOverTitle').textContent = 'Konec hry!';
-    document.getElementById('levelInfo').textContent = `Dosáhl jsi úrovně ${currentLevel}`;
+    
+    const leaderboardSection = document.getElementById('leaderboardSection');
+    
+    if (gameMode === 'progressive') {
+        document.getElementById('levelInfo').textContent = `Dosáhl jsi vlny ${progressiveWave}`;
+        leaderboardSection.classList.remove('hidden');
+        loadLeaderboard();
+    } else {
+        document.getElementById('levelInfo').textContent = `Dosáhl jsi úrovně ${currentLevel}`;
+        leaderboardSection.classList.add('hidden');
+    }
+    
     gameOverElement.classList.remove('hidden');
 }
 
@@ -1580,6 +1721,104 @@ function startGame(level) {
     initLevel(currentLevel);
     updateGame();
 }
+
+async function loadLeaderboard() {
+    const leaderboardList = document.getElementById('leaderboardList');
+    leaderboardList.innerHTML = '<p>Načítání...</p>';
+    
+    try {
+        const response = await fetch('/.netlify/functions/getLeaderboard');
+        const data = await response.json();
+        
+        if (data.scores && data.scores.length > 0) {
+            leaderboardList.innerHTML = data.scores.map((entry, index) => `
+                <div class="leaderboard-entry">
+                    <span class="leaderboard-rank">${index + 1}.</span>
+                    <span class="leaderboard-name">${entry.player_name}</span>
+                    <span class="leaderboard-score">${entry.score} bodů (vlna ${entry.wave})</span>
+                </div>
+            `).join('');
+        } else {
+            leaderboardList.innerHTML = '<p>Žebříček je zatím prázdný. Buď první!</p>';
+        }
+    } catch (error) {
+        console.error('Chyba při načítání žebříčku:', error);
+        leaderboardList.innerHTML = '<p>Nepodařilo se načíst žebříček.</p>';
+    }
+}
+
+async function submitScore(playerName, score, wave) {
+    const submitMessage = document.getElementById('submitMessage');
+    submitMessage.textContent = 'Odesílání...';
+    submitMessage.style.color = '#4CAF50';
+    
+    try {
+        const response = await fetch('/.netlify/functions/submitScore', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                player_name: playerName,
+                score: score,
+                wave: wave
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok) {
+            submitMessage.textContent = '✓ Skóre úspěšně odesláno!';
+            submitMessage.style.color = '#4CAF50';
+            document.getElementById('playerName').value = '';
+            document.getElementById('submitScoreBtn').disabled = true;
+            loadLeaderboard();
+        } else {
+            submitMessage.textContent = '✗ ' + (data.error || 'Chyba při odesílání');
+            submitMessage.style.color = '#ff4444';
+        }
+    } catch (error) {
+        console.error('Chyba při odesílání skóre:', error);
+        submitMessage.textContent = '✗ Nepodařilo se odeslat skóre';
+        submitMessage.style.color = '#ff4444';
+    }
+}
+
+const submitScoreBtn = document.getElementById('submitScoreBtn');
+const playerNameInput = document.getElementById('playerName');
+
+submitScoreBtn.addEventListener('click', () => {
+    const playerName = playerNameInput.value.trim();
+    
+    if (!playerName) {
+        document.getElementById('submitMessage').textContent = 'Prosím zadej své jméno';
+        document.getElementById('submitMessage').style.color = '#ff4444';
+        return;
+    }
+    
+    if (playerName.length < 2) {
+        document.getElementById('submitMessage').textContent = 'Jméno musí mít alespoň 2 znaky';
+        document.getElementById('submitMessage').style.color = '#ff4444';
+        return;
+    }
+    
+    submitScore(playerName, score, progressiveWave);
+});
+
+const startProgressiveBtn = document.getElementById('startProgressiveBtn');
+
+startProgressiveBtn.addEventListener('click', () => {
+    mainMenu.classList.add('hidden');
+    canvas.classList.remove('hidden');
+    gameRunning = true;
+    score = 0;
+    lives = 3;
+    scoreElement.textContent = score;
+    livesElement.textContent = lives;
+    levelElement.textContent = 'Survival';
+    initProgressiveMode();
+    updateGame();
+});
 
 startNewGameBtn.addEventListener('click', () => {
     startGame(0);
