@@ -10,7 +10,7 @@ export class Player {
         this.angle = 0;
     }
 
-    update(keys, mouseX, mouseY, gameMap, canvas) {
+    update(keys, mouseX, mouseY, gameMap, canvas, deltaTime = 0.016) {
         let dx = 0;
         let dy = 0;
 
@@ -21,8 +21,9 @@ export class Player {
 
         if (dx !== 0 || dy !== 0) {
             const length = Math.sqrt(dx * dx + dy * dy);
-            dx = (dx / length) * this.speed;
-            dy = (dy / length) * this.speed;
+            // Rychlost * 60 pro převod na "pixely za sekundu" a vynásobení deltaTime
+            dx = (dx / length) * this.speed * 60 * deltaTime;
+            dy = (dy / length) * this.speed * 60 * deltaTime;
 
             const newX = this.x + dx;
             const newY = this.y + dy;

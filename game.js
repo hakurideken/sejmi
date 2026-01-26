@@ -202,10 +202,18 @@ function shoot() {
 function updateGame() {
     if (!state.gameRunning) return;
 
+    // Výpočet delta time (v sekundách)
+    const currentTime = performance.now();
+    state.deltaTime = (currentTime - state.lastFrameTime) / 1000;
+    state.lastFrameTime = currentTime;
+    
+    // Omezení delta time (pokud tab ztratí focus)
+    if (state.deltaTime > 0.1) state.deltaTime = 0.016;
+
     renderer.clear();
     renderer.drawMap(state.gameMap);
     
-    state.player.update(state.keys, state.mouseX, state.mouseY, state.gameMap, canvas);
+    state.player.update(state.keys, state.mouseX, state.mouseY, state.gameMap, canvas, state.deltaTime);
     state.player.draw(ctx, state.playerInvisible);
 
     if (state.keys.w || state.keys.a || state.keys.s || state.keys.d) {
@@ -220,7 +228,7 @@ function updateGame() {
     });
 
     state.bullets.forEach((bullet, bulletIndex) => {
-        bullet.update();
+        bullet.update(state.deltaTime);
         bullet.draw(ctx);
 
         if (bullet.checkWallCollision(state.gameMap)) {
@@ -283,7 +291,7 @@ function updateGame() {
         if (!isInSpawnZone(enemy.x, enemy.y, state.spawnSafeZone) || !state.playerInvisible) {
             enemy.update(state.player, state.gameMap, state.soundEvents, state.bullets, 
                         state.VISION_RANGE, state.HEARING_RANGE, state.ALERT_DURATION, state.SEARCH_DURATION,
-                        state.enemies, state.playerInvisible);
+                        state.enemies, state.playerInvisible, state.deltaTime);
         }
         enemy.draw(ctx);
     });
@@ -309,7 +317,7 @@ function updateGame() {
     }
 
     state.particles.forEach((particle, index) => {
-        particle.update();
+        particle.update(state.deltaTime);
         particle.draw(ctx);
         if (particle.isDead()) {
             state.particles.splice(index, 1);

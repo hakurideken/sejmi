@@ -11,10 +11,11 @@ export class Particle {
         this.size = Math.random() * 3 + 2;
     }
 
-    update() {
-        this.x += this.vx;
-        this.y += this.vy;
-        this.life--;
+    update(deltaTime = 0.016) {
+        // Rychlost * 60 pro převod na "pixely za sekundu" a vynásobení deltaTime
+        this.x += this.vx * 60 * deltaTime;
+        this.y += this.vy * 60 * deltaTime;
+        this.life -= 60 * deltaTime; // Snižování života proporcionálně k času
     }
 
     draw(ctx) {

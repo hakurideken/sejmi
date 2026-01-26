@@ -34,7 +34,7 @@ export class Enemy {
         this.isBoss = false;
     }
 
-    update(player, gameMap, soundEvents, bullets, VISION_RANGE, HEARING_RANGE, ALERT_DURATION, SEARCH_DURATION, enemies, playerInvisible) {
+    update(player, gameMap, soundEvents, bullets, VISION_RANGE, HEARING_RANGE, ALERT_DURATION, SEARCH_DURATION, enemies, playerInvisible, deltaTime = 0.016) {
         this.gameMap = gameMap;
         this.player = player;
         this.soundEvents = soundEvents;
@@ -46,8 +46,9 @@ export class Enemy {
         this.enemies = enemies;
         this.playerInvisible = playerInvisible;
         this.visionRange = VISION_RANGE;
+        this.deltaTime = deltaTime;
         
-        this.shootCooldown = Math.max(0, this.shootCooldown - 16);
+        this.shootCooldown = Math.max(0, this.shootCooldown - deltaTime * 1000);
 
         switch(this.state) {
             case 'patrol':
@@ -146,7 +147,7 @@ export class Enemy {
     }
 
     alert() {
-        this.alertTimer -= 16;
+        this.alertTimer -= this.deltaTime * 1000;
         
         if (this.path.length === 0) {
             this.path = findPath(this.x, this.y, this.searchX, this.searchY, this.gameMap);
@@ -210,7 +211,7 @@ export class Enemy {
                 this.pauseTimer = 1000;
             }
             
-            this.pauseTimer -= 16;
+            this.pauseTimer -= this.deltaTime * 1000;
             
             if (this.pauseTimer <= 0) {
                 this.state = 'search';
@@ -224,7 +225,7 @@ export class Enemy {
     }
 
     search() {
-        this.searchTimer -= 16;
+        this.searchTimer -= this.deltaTime * 1000;
 
         if (this.path.length === 0) {
             this.path = findPath(this.x, this.y, this.searchX, this.searchY, this.gameMap);
@@ -259,10 +260,11 @@ export class Enemy {
     }
 
     move() {
-        const currentSpeed = this.state === 'patrol' ? 0.7 : this.speed;
+        const currentSpeed = this.state === 'patrol' ? 1.0 : this.speed;
         
-        let moveX = Math.cos(this.angle) * currentSpeed;
-        let moveY = Math.sin(this.angle) * currentSpeed;
+        // Rychlost * 60 pro převod na "pixely za sekundu" a vynásobení deltaTime
+        let moveX = Math.cos(this.angle) * currentSpeed * 60 * this.deltaTime;
+        let moveY = Math.sin(this.angle) * currentSpeed * 60 * this.deltaTime;
         
         const avoidance = this.avoidOtherEnemies();
         if (avoidance) {

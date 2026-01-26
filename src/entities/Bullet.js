@@ -11,9 +11,10 @@ export class Bullet {
         this.isPlayer = isPlayer;
     }
 
-    update() {
-        this.x += Math.cos(this.angle) * this.speed;
-        this.y += Math.sin(this.angle) * this.speed;
+    update(deltaTime = 0.016) {
+        // Rychlost * 60 pro převod na "pixely za sekundu" a vynásobení deltaTime
+        this.x += Math.cos(this.angle) * this.speed * 60 * deltaTime;
+        this.y += Math.sin(this.angle) * this.speed * 60 * deltaTime;
     }
 
     draw(ctx) {

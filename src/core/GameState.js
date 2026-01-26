@@ -35,6 +35,9 @@ export class GameState {
         this.mouseY = 0;
         this.lastShot = 0;
         
+        this.lastFrameTime = performance.now();
+        this.deltaTime = 0;
+        
         this.VISION_RANGE = 200;
         this.HEARING_RANGE = 300;
         this.ALERT_DURATION = 5000;
