@@ -436,6 +436,7 @@ function returnToMenu() {
     mainMenu.classList.remove('hidden');
     canvas.classList.add('hidden');
     gameOverElement.classList.add('hidden');
+    document.getElementById('leaderboardPanel').classList.remove('hidden');
 }
 
 function startGame(level, progressive = false) {
@@ -448,6 +449,7 @@ function startGame(level, progressive = false) {
     
     mainMenu.classList.add('hidden');
     canvas.classList.remove('hidden');
+    document.getElementById('leaderboardPanel').classList.add('hidden');
     
     scoreElement.textContent = state.score;
     livesElement.textContent = state.lives;
@@ -479,6 +481,31 @@ async function loadLeaderboard() {
     } catch (error) {
         console.error('Chyba při načítání žebříčku:', error);
         leaderboardList.innerHTML = '<p>Nepodařilo se načíst žebříček.</p>';
+    }
+}
+
+async function loadMenuLeaderboard() {
+    const menuLeaderboardList = document.getElementById('menuLeaderboardList');
+    menuLeaderboardList.innerHTML = '<p>Načítání...</p>';
+    
+    try {
+        const response = await fetch('/.netlify/functions/getLeaderboard');
+        const data = await response.json();
+        
+        if (data.scores && data.scores.length > 0) {
+            menuLeaderboardList.innerHTML = data.scores.map((entry, index) => `
+                <div class="leaderboard-entry">
+                    <span class="leaderboard-rank">${index + 1}.</span>
+                    <span class="leaderboard-name">${entry.player_name}</span>
+                    <span class="leaderboard-score">${entry.score} bodů (vlna ${entry.wave})</span>
+                </div>
+            `).join('');
+        } else {
+            menuLeaderboardList.innerHTML = '<p>Žebříček je zatím prázdný. Buď první!</p>';
+        }
+    } catch (error) {
+        console.error('Chyba při načítání žebříčku:', error);
+        menuLeaderboardList.innerHTML = '<p>Nepodařilo se načíst žebříček.</p>';
     }
 }
 
@@ -554,13 +581,20 @@ canvas.addEventListener('click', () => {
 });
 
 restartBtn.addEventListener('click', restartGame);
-menuBtn.addEventListener('click', returnToMenu);
+menuBtn.addEventListener('click', () => {
+    returnToMenu();
+    loadMenuLeaderboard();
+});
+
+const refreshLeaderboardBtn = document.getElementById('refreshLeaderboardBtn');
+refreshLeaderboardBtn.addEventListener('click', loadMenuLeaderboard);
 
 startProgressiveBtn.addEventListener('click', () => {
     state.gameMode = 'progressive';
     state.gameRunning = true;
     mainMenu.classList.add('hidden');
     canvas.classList.remove('hidden');
+    document.getElementById('leaderboardPanel').classList.add('hidden');
     state.score = 0;
     state.lives = 3;
     scoreElement.textContent = state.score;
@@ -591,6 +625,9 @@ document.getElementById('submitScoreBtn').addEventListener('click', () => {
         submitMessage.style.color = '#ff4444';
     }
 });
+
+// Načíst žebříček při startu stránky
+loadMenuLeaderboard();
 
 // Export levels to window for temporary compatibility
 window.gameLevels = levels;
