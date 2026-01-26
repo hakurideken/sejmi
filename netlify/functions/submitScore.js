@@ -50,7 +50,7 @@ exports.handler = async (event, context) => {
       };
     }
 
-    const sql = neon(process.env.DATABASE_URL);
+    const sql = neon(process.env.NETLIFY_DATABASE_URL || process.env.DATABASE_URL);
     
     // Insert score
     await sql`
