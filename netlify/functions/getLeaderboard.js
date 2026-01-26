@@ -15,7 +15,7 @@ exports.handler = async (event, context) => {
   }
 
   try {
-    const sql = neon(process.env.DATABASE_URL);
+    const sql = neon(process.env.NETLIFY_DATABASE_URL || process.env.DATABASE_URL);
     
     const scores = await sql`
       SELECT player_name, score, wave, created_at
