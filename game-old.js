@@ -1,0 +1,1877 @@
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+const scoreElement = document.getElementById('score');
+const livesElement = document.getElementById('lives');
+const gameOverElement = document.getElementById('gameOver');
+const finalScoreElement = document.getElementById('finalScore');
+const restartBtn = document.getElementById('restartBtn');
+const menuBtn = document.getElementById('menuBtn');
+
+let gameRunning = true;
+let score = 0;
+let lives = 3;
+let mouseX = 0;
+let mouseY = 0;
+let currentLevel = 0;
+let totalEnemies = 0;
+let tutorialCompleted = false;
+let tutorialTextVisible = true;
+let playerInvisible = true;
+let gameMode = 'classic';
+let progressiveWave = 1;
+let enemiesKilledThisWave = 0;
+let progressiveDifficulty = 1;
+let isProgressivePlaythrough = false;
+
+const TILE_SIZE = 40;
+const SPAWN_SAFE_ZONE_RADIUS = 3;
+let VISION_RANGE = 200;
+let HEARING_RANGE = 300;
+let ALERT_DURATION = 5000;
+let SEARCH_DURATION = 8000;
+let ENEMY_SPEED = 1.2;
+
+const keys = {
+    w: false,
+    a: false,
+    s: false,
+    d: false
+};
+
+const player = {
+    x: 100,
+    y: 100,
+    size: 20,
+    speed: 2,
+    angle: 0,
+    color: '#00ff00'
+};
+
+const levels = [
+    {
+        map: [
+            [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+            [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+            [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+            [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+            [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+            [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+            [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+            [1,0,0,0,0,0,0,0,0,2,0,0,0,0,0,0,0,0,0,1],
+            [1,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1],
+            [1,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1],
+            [1,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1],
+            [1,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1],
+            [1,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1],
+            [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+            [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
+        ],
+        enemies: [
+            {x: 600, y: 480, patrol: [{x: 600, y: 480}, {x: 600, y: 480}]}
+        ],
+        playerStart: {x: 100, y: 100},
+        tutorial: true
+    },
+    {
+        map: [
+            [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+            [1,0,0,0,0,0,0,0,0,2,0,0,0,0,0,0,0,0,0,1],
+            [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+            [1,0,0,0,1,1,1,2,1,1,1,0,0,0,0,0,0,0,0,1],
+            [1,0,0,0,1,0,0,0,0,0,1,0,0,0,1,1,1,0,0,1],
+            [1,0,0,0,1,0,0,0,0,0,1,0,0,0,2,0,0,0,0,1],
+            [1,0,0,0,2,0,0,0,0,0,2,0,0,0,1,0,0,0,0,1],
+            [1,0,0,0,1,0,0,0,0,0,1,0,0,0,1,1,1,0,0,1],
+            [1,0,0,0,1,1,1,2,1,1,1,0,0,0,0,0,0,0,0,1],
+            [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+            [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+            [1,0,0,0,0,0,1,1,1,1,1,1,1,0,0,0,0,0,0,1],
+            [1,0,0,0,0,0,2,0,0,0,0,0,1,0,0,0,0,0,0,1],
+            [1,0,0,0,0,0,1,0,0,0,0,0,2,0,0,0,0,0,0,1],
+            [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
+        ],
+        enemies: [
+            {x: 300, y: 140, patrol: [{x: 300, y: 140}, {x: 500, y: 140}]},
+            {x: 580, y: 380, patrol: [{x: 580, y: 380}, {x: 680, y: 380}]}
+        ],
+        playerStart: {x: 100, y: 100}
+    },
+    {
+        map: [
+            [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+            [1,0,0,0,0,0,2,0,0,0,0,0,2,0,0,0,0,0,0,1],
+            [1,0,0,0,0,0,1,0,0,0,0,0,1,0,0,0,0,0,0,1],
+            [1,0,0,1,1,1,1,0,0,1,1,1,1,1,1,0,0,0,0,1],
+            [1,0,0,2,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,1],
+            [1,0,0,1,0,0,0,0,0,0,0,0,0,0,2,0,0,0,0,1],
+            [1,0,0,1,1,1,2,1,1,1,1,0,0,0,1,0,0,0,0,1],
+            [1,0,0,0,0,0,0,0,0,0,1,0,0,0,1,1,2,1,1,1],
+            [1,0,0,0,0,0,0,0,0,0,2,0,0,0,0,0,0,0,0,1],
+            [1,1,1,1,2,1,1,0,0,0,1,0,0,0,0,0,0,0,0,1],
+            [1,0,0,0,0,0,0,0,0,0,1,1,1,1,1,2,1,1,1,1],
+            [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+            [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+            [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+            [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
+        ],
+        enemies: [
+            {x: 180, y: 100, patrol: [{x: 180, y: 100}, {x: 340, y: 100}]},
+            {x: 500, y: 140, patrol: [{x: 500, y: 140}, {x: 620, y: 140}]},
+            {x: 300, y: 440, patrol: [{x: 300, y: 440}, {x: 480, y: 440}]}
+        ],
+        playerStart: {x: 100, y: 100}
+    },
+    {
+        map: [
+            [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+            [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+            [1,0,1,1,1,1,2,1,1,1,1,2,1,1,1,1,1,1,0,1],
+            [1,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,1],
+            [1,0,2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2,0,1],
+            [1,0,1,0,0,1,1,1,2,1,1,1,1,1,0,0,0,1,0,1],
+            [1,0,1,0,0,1,0,0,0,0,0,0,0,1,0,0,0,1,0,1],
+            [1,0,1,0,0,2,0,0,0,0,0,0,0,2,0,0,0,1,0,1],
+            [1,0,1,0,0,1,0,0,0,0,0,0,0,1,0,0,0,1,0,1],
+            [1,0,1,0,0,1,1,1,1,2,1,1,1,1,0,0,0,1,0,1],
+            [1,0,2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2,0,1],
+            [1,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,1],
+            [1,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,1],
+            [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+            [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
+        ],
+        enemies: [
+            {x: 180, y: 60, patrol: [{x: 180, y: 60}, {x: 620, y: 60}]},
+            {x: 300, y: 240, patrol: [{x: 300, y: 240}, {x: 480, y: 240}]},
+            {x: 140, y: 440, patrol: [{x: 140, y: 440}, {x: 340, y: 440}]},
+            {x: 540, y: 440, patrol: [{x: 540, y: 440}, {x: 680, y: 440}]}
+        ],
+        playerStart: {x: 100, y: 520}
+    },
+    {
+        map: [
+            [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+            [1,0,0,0,0,0,0,0,0,0,0,0,2,0,0,0,0,0,0,0,0,0,0,0,1],
+            [1,0,1,1,1,1,1,0,0,0,0,0,1,0,0,0,0,0,1,1,1,1,1,0,1],
+            [1,0,1,0,0,0,1,0,0,1,0,0,1,0,0,1,0,0,1,0,0,0,1,0,1],
+            [1,0,1,0,0,0,2,0,0,1,0,0,2,0,0,1,0,0,2,0,0,0,1,0,1],
+            [1,0,1,0,0,0,1,0,0,1,1,1,1,1,1,1,0,0,1,0,0,0,1,0,1],
+            [1,0,1,1,2,1,1,0,0,0,0,0,0,0,0,0,0,0,1,1,2,1,1,0,1],
+            [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+            [1,0,0,0,0,0,0,0,0,1,1,1,2,1,1,1,0,0,0,0,0,0,0,0,1],
+            [1,0,1,1,1,1,1,0,0,1,0,0,0,0,0,1,0,0,1,1,1,1,1,0,1],
+            [1,0,1,0,0,0,1,0,0,2,0,0,0,0,0,2,0,0,1,0,0,0,1,0,1],
+            [1,0,1,0,0,0,1,0,0,1,0,0,0,0,0,1,0,0,1,0,0,0,1,0,1],
+            [1,0,1,1,2,1,1,0,0,1,1,1,1,1,1,1,0,0,1,1,2,1,1,0,1],
+            [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+            [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
+        ],
+        enemies: [
+            {x: 200, y: 80, patrol: [{x: 200, y: 80}, {x: 800, y: 80}]},
+            {x: 300, y: 280, patrol: [{x: 300, y: 280}, {x: 700, y: 280}]},
+            {x: 500, y: 180, patrol: [{x: 500, y: 180}, {x: 500, y: 380}]},
+            {x: 150, y: 480, patrol: [{x: 150, y: 480}, {x: 350, y: 480}]},
+            {x: 650, y: 480, patrol: [{x: 650, y: 480}, {x: 850, y: 480}]}
+        ],
+        healthPickups: [{x: 500, y: 320}],
+        playerStart: {x: 80, y: 80}
+    },
+    {
+        map: [
+            [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+            [1,0,0,0,0,0,0,0,0,2,0,0,0,0,0,2,0,0,0,0,0,0,0,0,1],
+            [1,0,1,1,1,1,1,1,1,1,0,0,0,0,0,1,1,1,1,1,1,1,1,0,1],
+            [1,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,1],
+            [1,0,1,0,1,1,1,1,1,1,1,2,1,1,1,1,1,1,1,1,0,0,1,0,1],
+            [1,0,1,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,1,0,1],
+            [1,0,1,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,1,0,1],
+            [1,0,2,0,1,0,0,1,1,1,1,1,1,1,1,1,0,0,0,1,0,0,2,0,1],
+            [1,0,1,0,1,0,0,1,0,0,0,0,0,0,0,1,0,0,0,1,0,0,1,0,1],
+            [1,0,1,0,1,0,0,1,0,0,0,0,0,0,0,1,0,0,0,1,0,0,1,0,1],
+            [1,0,1,0,1,0,0,1,1,1,1,2,1,1,1,1,0,0,0,1,0,0,1,0,1],
+            [1,0,1,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,1,0,1],
+            [1,0,1,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,1,0,1],
+            [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+            [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
+        ],
+        enemies: [
+            {x: 200, y: 80, patrol: [{x: 200, y: 80}, {x: 800, y: 80}]},
+            {x: 400, y: 240, patrol: [{x: 400, y: 240}, {x: 600, y: 240}]},
+            {x: 300, y: 380, patrol: [{x: 300, y: 380}, {x: 700, y: 380}]},
+            {x: 150, y: 520, patrol: [{x: 150, y: 520}, {x: 850, y: 520}]},
+            {x: 500, y: 180, patrol: [{x: 500, y: 180}, {x: 500, y: 480}]},
+            {x: 700, y: 300, patrol: [{x: 700, y: 300}, {x: 700, y: 400}]}
+        ],
+        playerStart: {x: 80, y: 520}
+    },
+    {
+        map: [
+            [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+            [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+            [1,0,1,1,1,2,1,1,1,0,1,1,1,1,1,0,1,1,1,2,1,1,1,0,1],
+            [1,0,1,0,0,0,0,0,1,0,1,0,0,0,1,0,1,0,0,0,0,0,1,0,1],
+            [1,0,1,0,0,0,0,0,1,0,1,0,0,0,1,0,1,0,0,0,0,0,1,0,1],
+            [1,0,2,0,0,0,0,0,2,0,2,0,0,0,2,0,2,0,0,0,0,0,2,0,1],
+            [1,0,1,0,0,0,0,0,1,0,1,0,0,0,1,0,1,0,0,0,0,0,1,0,1],
+            [1,0,1,0,0,0,0,0,1,0,1,0,0,0,1,0,1,0,0,0,0,0,1,0,1],
+            [1,0,1,1,1,2,1,1,1,0,1,1,2,1,1,0,1,1,1,2,1,1,1,0,1],
+            [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+            [1,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,1],
+            [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+            [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+            [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+            [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
+        ],
+        enemies: [
+            {x: 200, y: 140, patrol: [{x: 200, y: 140}, {x: 300, y: 140}]},
+            {x: 500, y: 140, patrol: [{x: 500, y: 140}, {x: 600, y: 140}]},
+            {x: 800, y: 140, patrol: [{x: 800, y: 140}, {x: 900, y: 140}]},
+            {x: 200, y: 280, patrol: [{x: 200, y: 280}, {x: 300, y: 280}]},
+            {x: 500, y: 280, patrol: [{x: 500, y: 280}, {x: 600, y: 280}]},
+            {x: 800, y: 280, patrol: [{x: 800, y: 280}, {x: 900, y: 280}]},
+            {x: 400, y: 480, patrol: [{x: 400, y: 480}, {x: 700, y: 480}]}
+        ],
+        healthPickups: [{x: 500, y: 380}],
+        playerStart: {x: 80, y: 520}
+    },
+    {
+        map: [
+            [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+            [1,0,0,0,0,0,0,0,0,0,0,0,0,0,2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+            [1,0,1,1,1,1,1,1,1,1,1,1,1,0,1,0,1,1,1,1,1,1,1,1,1,1,1,1,0,1],
+            [1,0,1,0,0,0,0,0,0,0,0,0,2,0,2,0,2,0,0,0,0,0,0,0,0,0,0,1,0,1],
+            [1,0,1,0,1,1,1,1,1,1,1,0,1,0,1,0,1,0,1,1,1,1,1,1,1,0,0,1,0,1],
+            [1,0,1,0,1,0,0,0,0,0,2,0,1,0,1,0,1,0,2,0,0,0,0,0,1,0,0,1,0,1],
+            [1,0,1,0,1,0,0,0,0,0,1,0,1,0,1,0,1,0,1,0,0,0,0,0,1,0,0,1,0,1],
+            [1,0,1,0,1,0,0,0,0,0,1,0,1,0,1,0,1,0,1,0,0,0,0,0,1,0,0,1,0,1],
+            [1,0,1,0,1,1,1,2,1,1,1,0,1,0,1,0,1,0,1,1,1,2,1,1,1,0,0,1,0,1],
+            [1,0,1,0,0,0,0,0,0,0,0,0,1,0,1,0,1,0,0,0,0,0,0,0,0,0,0,1,0,1],
+            [1,0,1,1,1,1,1,1,1,1,1,1,1,0,1,0,1,1,1,1,1,1,1,1,1,1,1,1,0,1],
+            [1,0,0,0,0,0,0,0,0,0,0,0,0,0,2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+            [1,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+            [1,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+            [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
+        ],
+        enemies: [
+            {x: 200, y: 80, patrol: [{x: 200, y: 80}, {x: 1000, y: 80}]},
+            {x: 300, y: 200, patrol: [{x: 300, y: 200}, {x: 300, y: 380}]},
+            {x: 500, y: 240, patrol: [{x: 500, y: 240}, {x: 700, y: 240}]},
+            {x: 900, y: 200, patrol: [{x: 900, y: 200}, {x: 900, y: 380}]},
+            {x: 400, y: 480, patrol: [{x: 400, y: 480}, {x: 800, y: 480}]},
+            {x: 150, y: 340, patrol: [{x: 150, y: 340}, {x: 350, y: 340}]},
+            {x: 850, y: 340, patrol: [{x: 850, y: 340}, {x: 1050, y: 340}]},
+            {x: 600, y: 140, patrol: [{x: 600, y: 140}, {x: 600, y: 380}]}
+        ],
+        playerStart: {x: 80, y: 80}
+    },
+    {
+        map: [
+            [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+            [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+            [1,0,1,1,1,1,1,0,1,1,1,1,1,0,1,1,1,1,1,0,1,1,1,1,1,0,1,1,0,1],
+            [1,0,1,0,0,0,1,0,1,0,0,0,1,0,1,0,0,0,1,0,1,0,0,0,1,0,0,1,0,1],
+            [1,0,1,0,0,0,2,0,2,0,0,0,2,0,2,0,0,0,2,0,2,0,0,0,1,0,0,2,0,1],
+            [1,0,1,0,0,0,1,0,1,0,0,0,1,0,1,0,0,0,1,0,1,0,0,0,1,0,0,1,0,1],
+            [1,0,1,1,2,1,1,0,1,1,2,1,1,0,1,1,2,1,1,0,1,1,2,1,1,0,1,1,0,1],
+            [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+            [1,0,1,1,1,1,1,1,1,1,1,1,1,1,2,1,1,1,1,1,1,1,1,1,1,1,1,1,0,1],
+            [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+            [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+            [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+            [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1],
+            [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2,0,0,1],
+            [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
+        ],
+        enemies: [
+            {x: 200, y: 140, patrol: [{x: 200, y: 140}, {x: 300, y: 140}]},
+            {x: 400, y: 140, patrol: [{x: 400, y: 140}, {x: 500, y: 140}]},
+            {x: 600, y: 140, patrol: [{x: 600, y: 140}, {x: 700, y: 140}]},
+            {x: 800, y: 140, patrol: [{x: 800, y: 140}, {x: 900, y: 140}]},
+            {x: 1000, y: 140, patrol: [{x: 1000, y: 140}, {x: 1100, y: 140}]},
+            {x: 300, y: 280, patrol: [{x: 300, y: 280}, {x: 900, y: 280}]},
+            {x: 200, y: 420, patrol: [{x: 200, y: 420}, {x: 1000, y: 420}]},
+            {x: 500, y: 480, patrol: [{x: 500, y: 480}, {x: 700, y: 480}]},
+            {x: 150, y: 340, patrol: [{x: 150, y: 340}, {x: 150, y: 480}]}
+        ],
+        playerStart: {x: 1100, y: 520}
+    },
+    {
+        map: [
+            [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+            [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+            [1,0,1,1,1,1,1,1,1,1,1,1,1,1,2,1,1,1,1,1,1,1,1,1,1,1,1,1,0,1],
+            [1,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,1],
+            [1,0,1,0,1,1,1,1,1,1,1,1,1,1,2,1,1,1,1,1,1,1,1,1,1,1,0,1,0,1],
+            [1,0,1,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,1,0,1],
+            [1,0,1,0,1,0,1,1,1,1,1,1,1,2,1,1,1,1,1,1,1,1,1,0,0,1,0,1,0,1],
+            [1,0,1,0,1,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,1,0,1,0,1],
+            [1,0,1,0,1,0,1,0,1,1,1,1,1,1,2,1,1,1,1,1,0,0,1,0,0,1,0,1,0,1],
+            [1,0,1,0,1,0,1,0,1,0,0,0,0,0,0,0,0,0,0,1,0,0,1,0,0,1,0,1,0,1],
+            [1,0,1,0,1,0,1,0,1,0,0,0,0,0,0,0,0,0,0,1,0,0,1,0,0,1,0,1,0,1],
+            [1,0,1,0,1,0,1,0,1,1,1,1,1,2,1,1,1,1,1,1,0,0,1,0,0,1,0,1,0,1],
+            [1,0,1,0,1,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,1,0,1,0,1],
+            [1,0,1,0,1,0,1,1,1,1,1,1,1,1,2,1,1,1,1,1,1,1,1,0,0,1,0,1,0,1],
+            [1,0,1,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,1,0,1],
+            [1,0,1,0,1,1,1,1,1,1,1,1,1,1,2,1,1,1,1,1,1,1,1,1,1,1,0,1,0,1],
+            [1,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,1],
+            [1,0,1,1,1,1,1,1,1,1,1,1,1,1,2,1,1,1,1,1,1,1,1,1,1,1,1,1,0,1],
+            [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+            [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
+        ],
+        enemies: [
+            {x: 200, y: 80, patrol: [{x: 200, y: 80}, {x: 1000, y: 80}]},
+            {x: 300, y: 240, patrol: [{x: 300, y: 240}, {x: 900, y: 240}]},
+            {x: 400, y: 340, patrol: [{x: 400, y: 340}, {x: 800, y: 340}]},
+            {x: 500, y: 440, patrol: [{x: 500, y: 440}, {x: 700, y: 440}]},
+            {x: 200, y: 680, patrol: [{x: 200, y: 680}, {x: 1000, y: 680}]},
+            {x: 600, y: 180, patrol: [{x: 600, y: 180}, {x: 600, y: 580}]},
+            {x: 300, y: 380, patrol: [{x: 300, y: 380}, {x: 900, y: 380}]},
+            {x: 450, y: 280, patrol: [{x: 450, y: 280}, {x: 750, y: 280}]},
+            {x: 150, y: 520, patrol: [{x: 150, y: 520}, {x: 1050, y: 520}]},
+            {x: 800, y: 300, patrol: [{x: 800, y: 300}, {x: 800, y: 500}]}
+        ],
+        healthPickups: [{x: 600, y: 380}],
+        playerStart: {x: 80, y: 720}
+    },
+    {
+        map: [
+            [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+            [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+            [1,0,1,1,2,1,1,0,1,1,2,1,1,0,1,1,2,1,1,0,1,1,2,1,1,0,1,1,0,1],
+            [1,0,1,0,0,0,1,0,1,0,0,0,1,0,1,0,0,0,1,0,1,0,0,0,1,0,0,1,0,1],
+            [1,0,2,0,0,0,2,0,2,0,0,0,2,0,2,0,0,0,2,0,2,0,0,0,2,0,0,2,0,1],
+            [1,0,1,0,0,0,1,0,1,0,0,0,1,0,1,0,0,0,1,0,1,0,0,0,1,0,0,1,0,1],
+            [1,0,1,1,2,1,1,0,1,1,2,1,1,0,1,1,2,1,1,0,1,1,2,1,1,0,1,1,0,1],
+            [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+            [1,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,1],
+            [1,0,0,0,0,0,0,0,0,0,0,0,0,0,2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+            [1,0,1,1,1,1,1,1,1,1,1,1,1,0,1,0,1,1,1,1,1,1,1,1,1,1,1,1,0,1],
+            [1,0,0,0,0,0,0,0,0,0,0,0,0,0,2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+            [1,0,1,1,2,1,1,0,1,1,2,1,1,0,1,0,1,1,2,1,1,0,1,1,2,1,1,1,0,1],
+            [1,0,1,0,0,0,1,0,1,0,0,0,1,0,1,0,1,0,0,0,1,0,1,0,0,0,0,1,0,1],
+            [1,0,2,0,0,0,2,0,2,0,0,0,2,0,2,0,2,0,0,0,2,0,2,0,0,0,0,2,0,1],
+            [1,0,1,0,0,0,1,0,1,0,0,0,1,0,1,0,1,0,0,0,1,0,1,0,0,0,0,1,0,1],
+            [1,0,1,1,2,1,1,0,1,1,2,1,1,0,1,0,1,1,2,1,1,0,1,1,2,1,1,1,0,1],
+            [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+            [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+            [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
+        ],
+        enemies: [
+            {x: 200, y: 140, patrol: [{x: 200, y: 140}, {x: 300, y: 140}]},
+            {x: 400, y: 140, patrol: [{x: 400, y: 140}, {x: 500, y: 140}]},
+            {x: 600, y: 140, patrol: [{x: 600, y: 140}, {x: 700, y: 140}]},
+            {x: 800, y: 140, patrol: [{x: 800, y: 140}, {x: 900, y: 140}]},
+            {x: 1000, y: 140, patrol: [{x: 1000, y: 140}, {x: 1100, y: 140}]},
+            {x: 200, y: 520, patrol: [{x: 200, y: 520}, {x: 300, y: 520}]},
+            {x: 400, y: 520, patrol: [{x: 400, y: 520}, {x: 500, y: 520}]},
+            {x: 600, y: 520, patrol: [{x: 600, y: 520}, {x: 700, y: 520}]},
+            {x: 800, y: 520, patrol: [{x: 800, y: 520}, {x: 900, y: 520}]},
+            {x: 1000, y: 520, patrol: [{x: 1000, y: 520}, {x: 1100, y: 520}]},
+            {x: 300, y: 280, patrol: [{x: 300, y: 280}, {x: 900, y: 280}]}
+        ],
+        boss: {x: 600, y: 380, patrol: [{x: 600, y: 380}, {x: 600, y: 680}]},
+        playerStart: {x: 80, y: 720}
+    }
+];
+
+const progressiveMap = {
+    map: [
+        [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+        [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+        [1,0,1,1,1,0,0,0,1,1,1,1,1,0,1,1,1,1,1,0,0,0,1,0,1],
+        [1,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,1],
+        [1,0,1,0,0,1,1,1,0,0,0,0,0,1,1,1,0,0,0,1,1,0,1,0,1],
+        [1,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,1,0,0,0,1],
+        [1,0,0,0,0,1,0,0,0,1,1,2,1,1,0,1,0,0,0,0,1,0,0,0,1],
+        [1,0,1,0,0,0,0,0,0,1,0,0,0,1,0,0,0,0,0,0,0,0,1,0,1],
+        [1,0,1,1,0,0,0,0,0,2,0,0,0,2,0,0,0,0,0,0,1,1,1,0,1],
+        [1,0,0,0,0,0,0,0,0,1,0,0,0,1,0,0,0,0,0,0,0,0,0,0,1],
+        [1,0,0,0,0,1,0,0,0,1,1,2,1,1,0,1,0,0,0,0,1,0,0,0,1],
+        [1,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,1,0,0,0,1],
+        [1,0,1,0,0,1,1,1,0,0,0,0,0,1,1,1,0,0,0,1,1,0,1,0,1],
+        [1,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,1],
+        [1,0,1,1,1,0,0,0,1,1,1,1,1,0,1,1,1,1,1,0,0,0,1,0,1],
+        [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+        [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
+    ],
+    playerStart: {x: 500, y: 320}
+};
+
+let gameMap = [];
+
+const bullets = [];
+const enemies = [];
+const particles = [];
+const soundEvents = [];
+const healthPickups = [];
+
+let lastShot = 0;
+const shootCooldown = 500;
+
+let spawnSafeZone = {x: 0, y: 0};
+
+function isInSpawnZone(x, y) {
+    const tileX = Math.floor(x / TILE_SIZE);
+    const tileY = Math.floor(y / TILE_SIZE);
+    const spawnTileX = Math.floor(spawnSafeZone.x / TILE_SIZE);
+    const spawnTileY = Math.floor(spawnSafeZone.y / TILE_SIZE);
+    
+    const distance = Math.sqrt(
+        Math.pow(tileX - spawnTileX, 2) + 
+        Math.pow(tileY - spawnTileY, 2)
+    );
+    
+    return distance <= SPAWN_SAFE_ZONE_RADIUS;
+}
+
+function findPath(startX, startY, endX, endY) {
+    const startTileX = Math.floor(startX / TILE_SIZE);
+    const startTileY = Math.floor(startY / TILE_SIZE);
+    const endTileX = Math.floor(endX / TILE_SIZE);
+    const endTileY = Math.floor(endY / TILE_SIZE);
+    
+    if (!gameMap || startTileY < 0 || startTileY >= gameMap.length || 
+        startTileX < 0 || startTileX >= gameMap[0].length ||
+        endTileY < 0 || endTileY >= gameMap.length || 
+        endTileX < 0 || endTileX >= gameMap[0].length) {
+        return null;
+    }
+    
+    const openSet = [{x: startTileX, y: startTileY, g: 0, h: 0, f: 0, parent: null}];
+    const closedSet = new Set();
+    const openSetMap = new Map();
+    openSetMap.set(`${startTileX},${startTileY}`, openSet[0]);
+    
+    while (openSet.length > 0) {
+        openSet.sort((a, b) => a.f - b.f);
+        const current = openSet.shift();
+        const currentKey = `${current.x},${current.y}`;
+        openSetMap.delete(currentKey);
+        
+        if (current.x === endTileX && current.y === endTileY) {
+            const path = [];
+            let node = current;
+            while (node) {
+                path.unshift({x: node.x * TILE_SIZE + TILE_SIZE / 2, y: node.y * TILE_SIZE + TILE_SIZE / 2});
+                node = node.parent;
+            }
+            return path;
+        }
+        
+        closedSet.add(currentKey);
+        
+        const neighbors = [
+            {x: current.x + 1, y: current.y},
+            {x: current.x - 1, y: current.y},
+            {x: current.x, y: current.y + 1},
+            {x: current.x, y: current.y - 1}
+        ];
+        
+        for (let neighbor of neighbors) {
+            const neighborKey = `${neighbor.x},${neighbor.y}`;
+            
+            if (neighbor.y < 0 || neighbor.y >= gameMap.length || 
+                neighbor.x < 0 || neighbor.x >= gameMap[0].length) {
+                continue;
+            }
+            
+            const tile = gameMap[neighbor.y][neighbor.x];
+            if (tile === 1) continue;
+            
+            if (closedSet.has(neighborKey)) continue;
+            
+            const g = current.g + 1;
+            const h = Math.abs(neighbor.x - endTileX) + Math.abs(neighbor.y - endTileY);
+            const f = g + h;
+            
+            const existingNode = openSetMap.get(neighborKey);
+            if (existingNode && existingNode.g <= g) continue;
+            
+            const newNode = {x: neighbor.x, y: neighbor.y, g: g, h: h, f: f, parent: current};
+            
+            if (existingNode) {
+                const index = openSet.indexOf(existingNode);
+                openSet[index] = newNode;
+                openSetMap.set(neighborKey, newNode);
+            } else {
+                openSet.push(newNode);
+                openSetMap.set(neighborKey, newNode);
+            }
+        }
+    }
+    
+    return null;
+}
+
+class Bullet {
+    constructor(x, y, angle, isPlayer = true) {
+        this.x = x;
+        this.y = y;
+        this.angle = angle;
+        this.speed = 8;
+        this.size = 4;
+        this.isPlayer = isPlayer;
+        this.color = isPlayer ? '#ffff00' : '#ff0000';
+    }
+
+    update() {
+        this.x += Math.cos(this.angle) * this.speed;
+        this.y += Math.sin(this.angle) * this.speed;
+    }
+
+    draw() {
+        ctx.fillStyle = this.color;
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+        ctx.fill();
+    }
+
+    checkWallCollision() {
+        const tileX = Math.floor(this.x / TILE_SIZE);
+        const tileY = Math.floor(this.y / TILE_SIZE);
+        
+        if (tileY < 0 || tileY >= gameMap.length || tileX < 0 || tileX >= gameMap[0].length) {
+            return true;
+        }
+        
+        return gameMap[tileY][tileX] === 1;
+    }
+
+    collidesWith(obj) {
+        const dx = this.x - (obj.x + obj.size / 2);
+        const dy = this.y - (obj.y + obj.size / 2);
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        return distance < this.size + obj.size / 2;
+    }
+}
+
+class Enemy {
+    constructor(x, y, patrolPoints) {
+        this.x = x;
+        this.y = y;
+        this.size = 20;
+        this.speed = ENEMY_SPEED;
+        this.angle = 0;
+        this.state = 'patrol';
+        this.patrolPoints = patrolPoints || [];
+        this.currentPatrolIndex = 0;
+        this.alertTimer = 0;
+        this.searchTimer = 0;
+        this.lastKnownPlayerX = 0;
+        this.lastKnownPlayerY = 0;
+        this.searchX = 0;
+        this.searchY = 0;
+        this.shootCooldown = 0;
+        this.visionAngle = Math.PI / 3;
+        this.visionRange = VISION_RANGE;
+        this.stuckTimer = 0;
+        this.lastX = x;
+        this.lastY = y;
+        this.path = [];
+        this.pathIndex = 0;
+        this.randomPatrol = false;
+        this.randomPatrolTimer = 0;
+        this.originalPatrolPoints = patrolPoints ? [...patrolPoints] : [];
+        this.returningToPatrol = false;
+        this.pauseTimer = 0;
+    }
+
+    update() {
+        this.shootCooldown = Math.max(0, this.shootCooldown - 16);
+
+        switch(this.state) {
+            case 'patrol':
+                this.patrol();
+                break;
+            case 'alert':
+                this.alert();
+                break;
+            case 'combat':
+                this.combat();
+                break;
+            case 'search':
+                this.search();
+                break;
+        }
+
+        if (this.canSeePlayer() && this.state !== 'combat') {
+            this.lastKnownPlayerX = player.x;
+            this.lastKnownPlayerY = player.y;
+            this.state = 'combat';
+            this.alertTimer = ALERT_DURATION;
+            this.pauseTimer = 0;
+        }
+
+        this.checkSoundEvents();
+    }
+
+    patrol() {
+        if (this.randomPatrol) {
+            this.randomPatrolTimer--;
+            
+            if (this.randomPatrolTimer <= 0 || this.path.length === 0 || this.pathIndex >= this.path.length) {
+                let attempts = 0;
+                let randomX, randomY, validTarget = false;
+                
+                while (!validTarget && attempts < 10) {
+                    randomX = Math.random() * (gameMap[0].length * TILE_SIZE);
+                    randomY = Math.random() * (gameMap.length * TILE_SIZE);
+                    
+                    const tileX = Math.floor(randomX / TILE_SIZE);
+                    const tileY = Math.floor(randomY / TILE_SIZE);
+                    
+                    if (tileY >= 0 && tileY < gameMap.length && tileX >= 0 && tileX < gameMap[0].length) {
+                        if (gameMap[tileY][tileX] !== 1) {
+                            validTarget = true;
+                        }
+                    }
+                    attempts++;
+                }
+                
+                if (validTarget) {
+                    this.path = findPath(this.x, this.y, randomX, randomY);
+                    this.pathIndex = 0;
+                    this.randomPatrolTimer = 300 + Math.random() * 300;
+                    
+                    if (!this.path || this.path.length === 0) {
+                        this.randomPatrolTimer = 0;
+                        return;
+                    }
+                }
+            }
+            
+            if (this.path && this.path.length > 0 && this.pathIndex < this.path.length) {
+                this.followPath();
+            }
+        } else {
+            if (this.patrolPoints.length === 0) return;
+
+            const target = this.patrolPoints[this.currentPatrolIndex];
+            const dx = target.x - this.x;
+            const dy = target.y - this.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+
+            if (distance < 15) {
+                this.currentPatrolIndex = (this.currentPatrolIndex + 1) % this.patrolPoints.length;
+                this.path = [];
+                this.pathIndex = 0;
+                return;
+            }
+            
+            if (this.path.length === 0 || this.pathIndex >= this.path.length) {
+                const newPath = findPath(this.x, this.y, target.x, target.y);
+                if (newPath && newPath.length > 0) {
+                    this.path = newPath;
+                    this.pathIndex = 0;
+                }
+            }
+            
+            if (this.path && this.path.length > 0 && this.pathIndex < this.path.length) {
+                this.followPath();
+            } else {
+                this.angle = Math.atan2(dy, dx);
+                this.move();
+            }
+        }
+    }
+
+    alert() {
+        this.alertTimer -= 16;
+        
+        if (this.path.length === 0) {
+            this.path = findPath(this.x, this.y, this.searchX, this.searchY);
+            this.pathIndex = 0;
+        }
+        
+        if (this.path && this.path.length > 0) {
+            this.followPath();
+        } else {
+            const dx = this.searchX - this.x;
+            const dy = this.searchY - this.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+
+            if (distance > 10) {
+                if (!this.hasWallBetween(this.x, this.y, this.searchX, this.searchY)) {
+                    this.angle = Math.atan2(dy, dx);
+                }
+                this.move();
+            } else {
+                this.angle += 0.03;
+                this.stuckTimer = 0;
+            }
+        }
+
+        if (this.alertTimer <= 0) {
+            if (this.randomPatrol) {
+                this.state = 'search';
+                this.searchTimer = SEARCH_DURATION;
+                this.path = [];
+            } else {
+                this.state = 'patrol';
+                this.patrolPoints = [...this.originalPatrolPoints];
+            }
+        }
+    }
+
+    combat() {
+        this.alertTimer -= 16;
+
+        if (this.canSeePlayer()) {
+            this.lastKnownPlayerX = player.x;
+            this.lastKnownPlayerY = player.y;
+            this.pauseTimer = 0;
+            
+            const dx = this.lastKnownPlayerX - this.x;
+            const dy = this.lastKnownPlayerY - this.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+
+            this.angle = Math.atan2(dy, dx);
+
+            if (distance > 150) {
+                this.move();
+            }
+
+            if (this.shootCooldown === 0) {
+                this.shoot();
+                this.shootCooldown = 1000;
+            }
+        } else {
+            if (this.pauseTimer === 0) {
+                this.pauseTimer = 1000;
+            }
+            
+            this.pauseTimer -= 16;
+            
+            if (this.pauseTimer <= 0) {
+                this.state = 'search';
+                this.searchTimer = SEARCH_DURATION;
+                this.searchX = this.lastKnownPlayerX;
+                this.searchY = this.lastKnownPlayerY;
+                this.path = [];
+                this.pauseTimer = 0;
+            }
+        }
+    }
+
+    search() {
+        this.searchTimer -= 16;
+
+        if (this.path.length === 0) {
+            this.path = findPath(this.x, this.y, this.searchX, this.searchY);
+            this.pathIndex = 0;
+        }
+        
+        if (this.path && this.path.length > 0) {
+            this.followPath();
+        } else {
+            const dx = this.searchX - this.x;
+            const dy = this.searchY - this.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+
+            if (distance > 10) {
+                if (!this.hasWallBetween(this.x, this.y, this.searchX, this.searchY)) {
+                    this.angle = Math.atan2(dy, dx);
+                }
+                this.move();
+            } else {
+                this.angle += 0.05;
+                this.stuckTimer = 0;
+            }
+        }
+
+        if (this.searchTimer <= 0) {
+            this.state = 'patrol';
+            this.path = [];
+            if (!this.randomPatrol) {
+                this.patrolPoints = [...this.originalPatrolPoints];
+            }
+        }
+    }
+
+    move() {
+        const currentSpeed = this.state === 'patrol' ? 0.7 : this.speed;
+        
+        let moveX = Math.cos(this.angle) * currentSpeed;
+        let moveY = Math.sin(this.angle) * currentSpeed;
+        
+        const avoidance = this.avoidOtherEnemies();
+        if (avoidance) {
+            moveX += avoidance.x;
+            moveY += avoidance.y;
+        }
+        
+        const newX = this.x + moveX;
+        const newY = this.y + moveY;
+
+        if (!this.checkWallCollision(newX, newY)) {
+            this.x = newX;
+            this.y = newY;
+            this.stuckTimer = 0;
+        } else {
+            this.stuckTimer++;
+            if (this.stuckTimer > 10) {
+                this.tryAlternativeAngles();
+            }
+        }
+    }
+
+    avoidOtherEnemies() {
+        const avoidanceRadius = 30;
+        let avoidX = 0;
+        let avoidY = 0;
+        let nearbyCount = 0;
+        
+        for (let other of enemies) {
+            if (other === this) continue;
+            
+            const dx = this.x - other.x;
+            const dy = this.y - other.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            
+            if (distance < avoidanceRadius && distance > 0) {
+                avoidX += (dx / distance) * 0.5;
+                avoidY += (dy / distance) * 0.5;
+                nearbyCount++;
+            }
+        }
+        
+        if (nearbyCount > 0) {
+            return {x: avoidX, y: avoidY};
+        }
+        
+        return null;
+    }
+
+    followPath() {
+        if (!this.path || this.pathIndex >= this.path.length) {
+            return;
+        }
+        
+        const target = this.path[this.pathIndex];
+        const dx = target.x - this.x;
+        const dy = target.y - this.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        
+        const threshold = this.state === 'patrol' ? 15 : 10;
+        
+        if (distance < threshold) {
+            this.pathIndex++;
+        } else {
+            this.angle = Math.atan2(dy, dx);
+            this.move();
+        }
+    }
+
+    tryAlternativeAngles() {
+        const angles = [
+            this.angle + Math.PI / 4,
+            this.angle - Math.PI / 4,
+            this.angle + Math.PI / 2,
+            this.angle - Math.PI / 2,
+            this.angle + Math.PI * 3 / 4,
+            this.angle - Math.PI * 3 / 4
+        ];
+
+        for (let testAngle of angles) {
+            const testX = this.x + Math.cos(testAngle) * this.speed;
+            const testY = this.y + Math.sin(testAngle) * this.speed;
+            
+            if (!this.checkWallCollision(testX, testY)) {
+                this.angle = testAngle;
+                this.x = testX;
+                this.y = testY;
+                this.stuckTimer = 0;
+                return;
+            }
+        }
+        
+        this.stuckTimer = 0;
+    }
+
+    checkWallCollision(x, y) {
+        const tileX = Math.floor(x / TILE_SIZE);
+        const tileY = Math.floor(y / TILE_SIZE);
+        
+        if (tileY < 0 || tileY >= gameMap.length || tileX < 0 || tileX >= gameMap[0].length) {
+            return true;
+        }
+        
+        return gameMap[tileY][tileX] === 1;
+    }
+
+    canSeePlayer() {
+        if (playerInvisible) return false;
+        
+        const dx = player.x - this.x;
+        const dy = player.y - this.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+
+        if (distance > this.visionRange) return false;
+
+        const angleToPlayer = Math.atan2(dy, dx);
+        let angleDiff = angleToPlayer - this.angle;
+        
+        while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+        while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+
+        if (Math.abs(angleDiff) > this.visionAngle / 2) return false;
+
+        return !this.hasWallBetween(this.x, this.y, player.x, player.y);
+    }
+
+    hasWallBetween(x1, y1, x2, y2) {
+        const steps = 20;
+        for (let i = 0; i <= steps; i++) {
+            const t = i / steps;
+            const x = x1 + (x2 - x1) * t;
+            const y = y1 + (y2 - y1) * t;
+            
+            const tileX = Math.floor(x / TILE_SIZE);
+            const tileY = Math.floor(y / TILE_SIZE);
+            
+            if (tileY >= 0 && tileY < gameMap.length && tileX >= 0 && tileX < gameMap[0].length) {
+                if (gameMap[tileY][tileX] === 1) return true;
+            }
+        }
+        return false;
+    }
+
+    checkSoundEvents() {
+        if (playerInvisible) return;
+        
+        for (let sound of soundEvents) {
+            const dx = sound.x - this.x;
+            const dy = sound.y - this.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+
+            if (distance < HEARING_RANGE) {
+                if (this.state === 'patrol' || this.state === 'alert' || this.state === 'search' || this.state === 'combat') {
+                    this.state = 'alert';
+                    this.alertTimer = ALERT_DURATION;
+                    this.searchX = sound.x;
+                    this.searchY = sound.y;
+                    this.path = [];
+                }
+            }
+        }
+    }
+
+    shoot() {
+        const bulletX = this.x + Math.cos(this.angle) * this.size;
+        const bulletY = this.y + Math.sin(this.angle) * this.size;
+        bullets.push(new Bullet(bulletX, bulletY, this.angle, false));
+    }
+
+    drawVisionCone(color) {
+        const rays = 30;
+        const points = [{x: this.x, y: this.y}];
+        
+        for (let i = 0; i <= rays; i++) {
+            const rayAngle = this.angle - this.visionAngle / 2 + (this.visionAngle * i / rays);
+            const rayDx = Math.cos(rayAngle);
+            const rayDy = Math.sin(rayAngle);
+            
+            let hitDistance = this.visionRange;
+            
+            for (let dist = 0; dist <= this.visionRange; dist += 5) {
+                const checkX = this.x + rayDx * dist;
+                const checkY = this.y + rayDy * dist;
+                
+                const tileX = Math.floor(checkX / TILE_SIZE);
+                const tileY = Math.floor(checkY / TILE_SIZE);
+                
+                if (tileY >= 0 && tileY < gameMap.length && tileX >= 0 && tileX < gameMap[0].length) {
+                    if (gameMap[tileY][tileX] === 1) {
+                        hitDistance = dist;
+                        break;
+                    }
+                } else {
+                    hitDistance = dist;
+                    break;
+                }
+            }
+            
+            points.push({
+                x: this.x + rayDx * hitDistance,
+                y: this.y + rayDy * hitDistance
+            });
+        }
+        
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.moveTo(points[0].x, points[0].y);
+        for (let i = 1; i < points.length; i++) {
+            ctx.lineTo(points[i].x, points[i].y);
+        }
+        ctx.closePath();
+        ctx.fill();
+    }
+
+    draw() {
+        if (this.state === 'combat' || this.state === 'alert') {
+            this.drawVisionCone('rgba(255, 0, 0, 0.1)');
+        } else if (this.state === 'search') {
+            this.drawVisionCone('rgba(255, 165, 0, 0.1)');
+        } else {
+            this.drawVisionCone('rgba(100, 100, 100, 0.1)');
+        }
+
+        let bodyColor = '#4444ff';
+        if (this.state === 'combat') bodyColor = '#ff0000';
+        else if (this.state === 'alert') bodyColor = '#ff8800';
+        else if (this.state === 'search') bodyColor = '#ffaa00';
+
+        ctx.fillStyle = bodyColor;
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.size / 2, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(this.x, this.y);
+        ctx.lineTo(
+            this.x + Math.cos(this.angle) * this.size,
+            this.y + Math.sin(this.angle) * this.size
+        );
+        ctx.stroke();
+    }
+}
+
+class Particle {
+    constructor(x, y, color) {
+        this.x = x;
+        this.y = y;
+        this.vx = (Math.random() - 0.5) * 6;
+        this.vy = (Math.random() - 0.5) * 6;
+        this.life = 30;
+        this.color = color;
+        this.size = Math.random() * 3 + 2;
+    }
+
+    update() {
+        this.x += this.vx;
+        this.y += this.vy;
+        this.life--;
+    }
+
+    draw() {
+        ctx.fillStyle = this.color;
+        ctx.globalAlpha = this.life / 30;
+        ctx.fillRect(this.x, this.y, this.size, this.size);
+        ctx.globalAlpha = 1;
+    }
+
+    isDead() {
+        return this.life <= 0;
+    }
+}
+
+class Boss extends Enemy {
+    constructor(x, y, patrolPoints) {
+        super(x, y, patrolPoints);
+        this.health = 5;
+        this.maxHealth = 5;
+        this.size = 30;
+        this.speed = ENEMY_SPEED * 1.2;
+        this.visionAngle = Math.PI / 2;
+        this.visionRange = VISION_RANGE * 1.5;
+        this.isBoss = true;
+        this.randomPatrol = false;
+        this.originalPatrolPoints = patrolPoints ? [...patrolPoints] : [];
+    }
+
+    shoot() {
+        if (this.shootCooldown <= 0) {
+            const bulletX = this.x + Math.cos(this.angle) * this.size;
+            const bulletY = this.y + Math.sin(this.angle) * this.size;
+            bullets.push(new Bullet(bulletX, bulletY, this.angle, false));
+            
+            const offsetAngle1 = this.angle + 0.2;
+            const offsetAngle2 = this.angle - 0.2;
+            bullets.push(new Bullet(bulletX, bulletY, offsetAngle1, false));
+            bullets.push(new Bullet(bulletX, bulletY, offsetAngle2, false));
+            
+            this.shootCooldown = 800;
+        }
+    }
+
+    draw() {
+        super.draw();
+        
+        ctx.fillStyle = '#ff0000';
+        ctx.font = 'bold 12px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText('BOSS', this.x, this.y - 25);
+        
+        const barWidth = 40;
+        const barHeight = 5;
+        const barX = this.x - barWidth / 2;
+        const barY = this.y - 35;
+        
+        ctx.fillStyle = '#333';
+        ctx.fillRect(barX, barY, barWidth, barHeight);
+        
+        const healthWidth = (this.health / this.maxHealth) * barWidth;
+        ctx.fillStyle = '#ff0000';
+        ctx.fillRect(barX, barY, healthWidth, barHeight);
+        
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(barX, barY, barWidth, barHeight);
+    }
+}
+
+class HealthPickup {
+    constructor(x, y) {
+        this.x = x;
+        this.y = y;
+        this.size = 20;
+        this.collected = false;
+        this.pulseTime = 0;
+    }
+
+    update() {
+        this.pulseTime += 0.1;
+        
+        const dx = this.x - player.x;
+        const dy = this.y - player.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        
+        if (distance < this.size + player.size / 2 && !this.collected) {
+            this.collected = true;
+            lives = Math.min(lives + 1, 5);
+            livesElement.textContent = lives;
+            createExplosion(this.x, this.y, '#00ff00');
+        }
+    }
+
+    draw() {
+        if (this.collected) return;
+        
+        const pulse = Math.sin(this.pulseTime) * 3;
+        const size = this.size + pulse;
+        
+        ctx.fillStyle = '#00ff00';
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, size / 2, 0, Math.PI * 2);
+        ctx.fill();
+        
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(this.x - size / 4, this.y);
+        ctx.lineTo(this.x + size / 4, this.y);
+        ctx.moveTo(this.x, this.y - size / 4);
+        ctx.lineTo(this.x, this.y + size / 4);
+        ctx.stroke();
+    }
+}
+
+function createExplosion(x, y, color) {
+    for (let i = 0; i < 15; i++) {
+        particles.push(new Particle(x, y, color));
+    }
+}
+
+function drawMap() {
+    for (let y = 0; y < gameMap.length; y++) {
+        for (let x = 0; x < gameMap[y].length; x++) {
+            const tile = gameMap[y][x];
+            
+            if (tile === 1) {
+                ctx.fillStyle = '#333333';
+                ctx.fillRect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+                ctx.strokeStyle = '#222222';
+                ctx.strokeRect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+            } else if (tile === 2) {
+                ctx.fillStyle = '#8B4513';
+                ctx.fillRect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+                ctx.strokeStyle = '#654321';
+                ctx.strokeRect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+            } else {
+                ctx.fillStyle = '#1a1a1a';
+                ctx.fillRect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+            }
+        }
+    }
+}
+
+function drawPlayer() {
+    if (playerInvisible) {
+        ctx.fillStyle = 'rgba(0, 255, 0, 0.3)';
+    } else {
+        ctx.fillStyle = player.color;
+    }
+    
+    ctx.beginPath();
+    ctx.arc(player.x, player.y, player.size / 2, 0, Math.PI * 2);
+    ctx.fill();
+
+    if (playerInvisible) {
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+    } else {
+        ctx.strokeStyle = '#ffffff';
+    }
+    
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(player.x, player.y);
+    ctx.lineTo(
+        player.x + Math.cos(player.angle) * player.size,
+        player.y + Math.sin(player.angle) * player.size
+    );
+    ctx.stroke();
+}
+
+function drawTutorial() {
+    if (!tutorialTextVisible) return;
+    
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.9)';
+    ctx.fillRect(0, 0, canvas.width, 120);
+    
+    ctx.fillStyle = '#00ff00';
+    ctx.font = 'bold 22px Arial';
+    ctx.fillText('TUTORIAL - Úroveň 0', 20, 30);
+    
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '16px Arial';
+    ctx.fillText('WASD - Pohyb  |  Myš - Míření  |  Klik - Střelba  |  ESC - Menu', 20, 60);
+    ctx.fillText('Modří = Nepřátelé  |  Oranžové = Dveře  |  Šedé = Zdi  |  Buď potichu!', 20, 85);
+    
+    ctx.fillStyle = '#ffaa00';
+    ctx.font = 'bold 16px Arial';
+    ctx.fillText('Stiskni ENTER pro přeskočení tutorialu  |  Tento text zmizí po pohybu', 20, 110);
+}
+
+function updatePlayer() {
+    let dx = 0;
+    let dy = 0;
+
+    if (keys.w) dy -= 1;
+    if (keys.s) dy += 1;
+    if (keys.a) dx -= 1;
+    if (keys.d) dx += 1;
+
+    if (dx !== 0 || dy !== 0) {
+        if (currentLevel === 0 && tutorialTextVisible) {
+            tutorialTextVisible = false;
+        }
+        
+        if (playerInvisible) {
+            playerInvisible = false;
+        }
+        
+        const length = Math.sqrt(dx * dx + dy * dy);
+        dx /= length;
+        dy /= length;
+
+        const newX = player.x + dx * player.speed;
+        const newY = player.y + dy * player.speed;
+
+        if (!checkWallCollision(newX, player.y)) {
+            player.x = newX;
+        }
+        if (!checkWallCollision(player.x, newY)) {
+            player.y = newY;
+        }
+    }
+
+    const dx2 = mouseX - player.x;
+    const dy2 = mouseY - player.y;
+    player.angle = Math.atan2(dy2, dx2);
+}
+
+function checkWallCollision(x, y) {
+    const tileX = Math.floor(x / TILE_SIZE);
+    const tileY = Math.floor(y / TILE_SIZE);
+    
+    if (tileY < 0 || tileY >= gameMap.length || tileX < 0 || tileX >= gameMap[0].length) {
+        return true;
+    }
+    
+    return gameMap[tileY][tileX] === 1;
+}
+
+function isValidSpawnPosition(x, y) {
+    const tileX = Math.floor(x / TILE_SIZE);
+    const tileY = Math.floor(y / TILE_SIZE);
+    
+    if (tileY < 0 || tileY >= gameMap.length || tileX < 0 || tileX >= gameMap[0].length) {
+        return false;
+    }
+    
+    const tile = gameMap[tileY][tileX];
+    return tile === 0;
+}
+
+function findValidSpawnPosition(preferredX, preferredY) {
+    if (isValidSpawnPosition(preferredX, preferredY)) {
+        return {x: preferredX, y: preferredY};
+    }
+    
+    const searchRadius = 80;
+    for (let radius = 20; radius <= searchRadius; radius += 20) {
+        for (let angle = 0; angle < Math.PI * 2; angle += Math.PI / 8) {
+            const testX = preferredX + Math.cos(angle) * radius;
+            const testY = preferredY + Math.sin(angle) * radius;
+            
+            if (isValidSpawnPosition(testX, testY)) {
+                return {x: testX, y: testY};
+            }
+        }
+    }
+    
+    for (let y = 1; y < gameMap.length - 1; y++) {
+        for (let x = 1; x < gameMap[0].length - 1; x++) {
+            if (gameMap[y][x] === 0) {
+                return {x: x * TILE_SIZE + TILE_SIZE / 2, y: y * TILE_SIZE + TILE_SIZE / 2};
+            }
+        }
+    }
+    
+    return {x: 100, y: 100};
+}
+
+function shoot() {
+    const now = Date.now();
+    if (now - lastShot > shootCooldown) {
+        const bulletX = player.x + Math.cos(player.angle) * player.size;
+        const bulletY = player.y + Math.sin(player.angle) * player.size;
+        bullets.push(new Bullet(bulletX, bulletY, player.angle, true));
+        lastShot = now;
+        
+        soundEvents.push({ x: player.x, y: player.y, time: now });
+    }
+}
+
+function initLevel(level) {
+    const levelData = levels[level];
+    gameMap = levelData.map;
+    
+    enemies.length = 0;
+    bullets.length = 0;
+    particles.length = 0;
+    soundEvents.length = 0;
+    
+    VISION_RANGE = 200 + level * 30;
+    HEARING_RANGE = 300 + level * 50;
+    ENEMY_SPEED = Math.min(2.2, 1.2 + level * 0.1);
+    ALERT_DURATION = Math.max(3000, 5000 - level * 500);
+    SEARCH_DURATION = 8000 + level * 2000;
+    
+    if (levelData.playerStart) {
+        const playerPos = findValidSpawnPosition(levelData.playerStart.x, levelData.playerStart.y);
+        player.x = playerPos.x;
+        player.y = playerPos.y;
+        spawnSafeZone = {x: player.x, y: player.y};
+    } else {
+        const playerPos = findValidSpawnPosition(100, 100);
+        player.x = playerPos.x;
+        player.y = playerPos.y;
+        spawnSafeZone = {x: player.x, y: player.y};
+    }
+    
+    playerInvisible = true;
+    
+    levelData.enemies.forEach((enemyData, index) => {
+        const spawnPos = findValidSpawnPosition(enemyData.x, enemyData.y);
+        
+        const validatedPatrol = enemyData.patrol.map(point => {
+            return findValidSpawnPosition(point.x, point.y);
+        });
+        
+        const enemy = new Enemy(spawnPos.x, spawnPos.y, validatedPatrol);
+        
+        enemy.randomPatrol = true;
+        enemy.randomPatrolTimer = 300 + Math.random() * 300;
+        
+        enemies.push(enemy);
+    });
+    
+    if (levelData.boss) {
+        const bossPos = findValidSpawnPosition(levelData.boss.x, levelData.boss.y);
+        const validatedPatrol = levelData.boss.patrol.map(point => {
+            return findValidSpawnPosition(point.x, point.y);
+        });
+        const boss = new Boss(bossPos.x, bossPos.y, validatedPatrol);
+        boss.randomPatrol = true;
+        boss.randomPatrolTimer = 300 + Math.random() * 300;
+        enemies.push(boss);
+    }
+    
+    healthPickups.length = 0;
+    if (levelData.healthPickups) {
+        levelData.healthPickups.forEach(pickup => {
+            const pickupPos = findValidSpawnPosition(pickup.x, pickup.y);
+            healthPickups.push(new HealthPickup(pickupPos.x, pickupPos.y));
+        });
+    }
+    
+    totalEnemies = enemies.length;
+}
+
+function initProgressiveMode() {
+    gameMap = progressiveMap.map;
+    gameMode = 'progressive';
+    currentLevel = 1;
+    progressiveWave = 1;
+    enemiesKilledThisWave = 0;
+    progressiveDifficulty = 1;
+    
+    enemies.length = 0;
+    bullets.length = 0;
+    particles.length = 0;
+    soundEvents.length = 0;
+    healthPickups.length = 0;
+    
+    const playerPos = findValidSpawnPosition(progressiveMap.playerStart.x, progressiveMap.playerStart.y);
+    player.x = playerPos.x;
+    player.y = playerPos.y;
+    spawnSafeZone = {x: player.x, y: player.y};
+    
+    playerInvisible = true;
+    
+    VISION_RANGE = 200;
+    HEARING_RANGE = 300;
+    ENEMY_SPEED = 1.2;
+    ALERT_DURATION = 5000;
+    SEARCH_DURATION = 8000;
+    
+    spawnProgressiveWave();
+}
+
+function spawnProgressiveWave() {
+    let enemiesInWave;
+    let difficultyLevel;
+    
+    if (progressiveWave <= 12) {
+        enemiesInWave = progressiveWave;
+        difficultyLevel = 0;
+    } else {
+        enemiesInWave = 12;
+        difficultyLevel = progressiveWave - 12;
+    }
+    
+    enemiesKilledThisWave = 0;
+    
+    VISION_RANGE = 200 + difficultyLevel * 30;
+    HEARING_RANGE = 300 + difficultyLevel * 50;
+    ENEMY_SPEED = Math.min(2.5, 1.2 + difficultyLevel * 0.1);
+    ALERT_DURATION = Math.max(2000, 5000 - difficultyLevel * 500);
+    SEARCH_DURATION = 8000 + difficultyLevel * 2000;
+    
+    const spawnPoints = [
+        {x: 900, y: 100},
+        {x: 100, y: 100},
+        {x: 900, y: 600},
+        {x: 100, y: 600}
+    ];
+    
+    for (let i = 0; i < enemiesInWave; i++) {
+        let spawnPoint;
+        
+        if (enemiesInWave < 6) {
+            spawnPoint = spawnPoints[progressiveWave % spawnPoints.length];
+        } else {
+            spawnPoint = spawnPoints[i % spawnPoints.length];
+        }
+        
+        const offsetX = (Math.random() - 0.5) * 60;
+        const offsetY = (Math.random() - 0.5) * 60;
+        const spawnX = spawnPoint.x + offsetX;
+        const spawnY = spawnPoint.y + offsetY;
+        
+        const validPos = findValidSpawnPosition(spawnX, spawnY);
+        
+        const enemy = new Enemy(validPos.x, validPos.y, []);
+        enemy.randomPatrol = true;
+        enemy.randomPatrolTimer = 100 + Math.random() * 200;
+        enemies.push(enemy);
+    }
+    
+    totalEnemies = enemies.length;
+}
+
+function updateGame() {
+    if (!gameRunning) return;
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    drawMap();
+    updatePlayer();
+    drawPlayer();
+
+    soundEvents.forEach((sound, index) => {
+        if (Date.now() - sound.time > 100) {
+            soundEvents.splice(index, 1);
+        }
+    });
+
+    bullets.forEach((bullet, bulletIndex) => {
+        bullet.update();
+        bullet.draw();
+
+        if (bullet.checkWallCollision()) {
+            bullets.splice(bulletIndex, 1);
+            return;
+        }
+
+        if (bullet.isPlayer) {
+            enemies.forEach((enemy, enemyIndex) => {
+                if (bullet.collidesWith(enemy)) {
+                    if (enemy.isBoss) {
+                        enemy.health--;
+                        bullets.splice(bulletIndex, 1);
+                        createExplosion(enemy.x, enemy.y, '#ff6600');
+                        if (enemy.health <= 0) {
+                            createExplosion(enemy.x, enemy.y, '#ff0000');
+                            enemies.splice(enemyIndex, 1);
+                            score += 500;
+                            scoreElement.textContent = score;
+                        }
+                    } else {
+                        createExplosion(enemy.x, enemy.y, '#ff6600');
+                        enemies.splice(enemyIndex, 1);
+                        bullets.splice(bulletIndex, 1);
+                        score += 100;
+                        scoreElement.textContent = score;
+                        
+                        if (gameMode === 'progressive') {
+                            enemiesKilledThisWave++;
+                            if (enemiesKilledThisWave >= totalEnemies) {
+                                progressiveWave++;
+                                setTimeout(() => {
+                                    if (gameRunning) {
+                                        spawnProgressiveWave();
+                                    }
+                                }, 2000);
+                            }
+                        }
+                    }
+                }
+            });
+        } else {
+            if (bullet.collidesWith(player) && lives > 0) {
+                createExplosion(player.x, player.y, '#ff0000');
+                bullets.splice(bulletIndex, 1);
+                if (currentLevel !== 0) {
+                    lives--;
+                    livesElement.textContent = lives;
+                    if (lives <= 0) {
+                        lives = 0;
+                        livesElement.textContent = lives;
+                        endGame();
+                    }
+                }
+            }
+        }
+    });
+
+    enemies.forEach(enemy => {
+        enemy.update();
+        enemy.draw();
+    });
+    
+    healthPickups.forEach(pickup => {
+        pickup.update();
+        pickup.draw();
+    });
+    
+    const levelData = levels[currentLevel];
+    if (levelData && levelData.tutorial) {
+        drawTutorial();
+    }
+    
+    if (enemies.length === 0 && totalEnemies > 0 && gameMode !== 'progressive') {
+        checkLevelComplete();
+    }
+
+    particles.forEach((particle, index) => {
+        particle.update();
+        particle.draw();
+        if (particle.isDead()) {
+            particles.splice(index, 1);
+        }
+    });
+
+    if (gameRunning) {
+        requestAnimationFrame(updateGame);
+    }
+}
+
+function endGame() {
+    gameRunning = false;
+    finalScoreElement.textContent = score;
+    document.getElementById('gameOverTitle').textContent = 'Konec hry!';
+    
+    const leaderboardSection = document.getElementById('leaderboardSection');
+    
+    if (gameMode === 'progressive') {
+        document.getElementById('levelInfo').textContent = `Dosáhl jsi vlny ${progressiveWave}`;
+        leaderboardSection.classList.remove('hidden');
+        loadLeaderboard();
+        document.getElementById('restartBtn').textContent = 'Hrát znovu';
+        menuBtn.style.display = 'inline-block';
+    } else {
+        if (isProgressivePlaythrough) {
+            document.getElementById('levelInfo').textContent = `Zemřel jsi na úrovni ${currentLevel}`;
+            document.getElementById('restartBtn').textContent = 'Hrát znovu';
+            menuBtn.style.display = 'inline-block';
+        } else {
+            document.getElementById('levelInfo').textContent = `Zemřel jsi na úrovni ${currentLevel}`;
+            document.getElementById('restartBtn').textContent = 'Zkusit znovu';
+            menuBtn.style.display = 'inline-block';
+        }
+        leaderboardSection.classList.add('hidden');
+    }
+    
+    gameOverElement.classList.remove('hidden');
+}
+
+function checkLevelComplete() {
+    gameRunning = false;
+    finalScoreElement.textContent = score;
+    
+    if (!isProgressivePlaythrough) {
+        document.getElementById('gameOverTitle').textContent = 'Úroveň dokončena!';
+        document.getElementById('levelInfo').textContent = 'Gratulujeme!';
+        document.getElementById('restartBtn').textContent = 'Zpět do menu';
+        menuBtn.style.display = 'none';
+        gameOverElement.classList.remove('hidden');
+        return;
+    }
+    
+    if (currentLevel < levels.length) {
+        document.getElementById('gameOverTitle').textContent = 'Úroveň dokončena!';
+        document.getElementById('levelInfo').textContent = `Připrav se na úroveň ${currentLevel + 1}`;
+        document.getElementById('restartBtn').textContent = 'Další úroveň';
+        menuBtn.style.display = 'inline-block';
+    } else {
+        document.getElementById('gameOverTitle').textContent = 'Gratulujeme!';
+        document.getElementById('levelInfo').textContent = 'Dokončil jsi všechny úrovně!';
+        document.getElementById('restartBtn').textContent = 'Hrát znovu';
+        menuBtn.style.display = 'inline-block';
+    }
+    
+    gameOverElement.classList.remove('hidden');
+}
+
+function restartGame() {
+    const wasComplete = enemies.length === 0 && totalEnemies > 0;
+    const wasDead = lives <= 0;
+    
+    if (!isProgressivePlaythrough && wasComplete) {
+        returnToMenu();
+        return;
+    }
+    
+    if (wasDead) {
+        if (isProgressivePlaythrough) {
+            currentLevel = 1;
+        }
+        score = 0;
+        lives = 3;
+    } else if (wasComplete && currentLevel < levels.length - 1) {
+        if (currentLevel === 0) {
+            tutorialCompleted = true;
+        }
+        currentLevel++;
+    } else if (wasComplete && currentLevel >= levels.length - 1) {
+        currentLevel = tutorialCompleted ? 1 : 0;
+        score = 0;
+        lives = 3;
+    }
+    
+    gameRunning = true;
+    scoreElement.textContent = score;
+    livesElement.textContent = lives;
+    document.getElementById('levelElement').textContent = currentLevel;
+    gameOverElement.classList.add('hidden');
+    document.getElementById('restartBtn').textContent = 'Hrát znovu';
+    lastShot = 0;
+    
+    if (gameMode === 'progressive') {
+        initProgressiveMode();
+    } else {
+        initLevel(currentLevel);
+    }
+    
+    updateGame();
+}
+
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'w' || e.key === 'W') keys.w = true;
+    if (e.key === 'a' || e.key === 'A') keys.a = true;
+    if (e.key === 's' || e.key === 'S') keys.s = true;
+    if (e.key === 'd' || e.key === 'D') keys.d = true;
+    if (e.key === 'Escape') {
+        returnToMenu();
+    }
+    if (e.key === 'Enter' && currentLevel === 0 && gameRunning) {
+        tutorialCompleted = true;
+        currentLevel = 1;
+        initLevel(currentLevel);
+        document.getElementById('levelElement').textContent = currentLevel;
+    }
+});
+
+document.addEventListener('keyup', (e) => {
+    if (e.key === 'w' || e.key === 'W') keys.w = false;
+    if (e.key === 'a' || e.key === 'A') keys.a = false;
+    if (e.key === 's' || e.key === 'S') keys.s = false;
+    if (e.key === 'd' || e.key === 'D') keys.d = false;
+});
+
+canvas.addEventListener('mousemove', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    mouseX = e.clientX - rect.left;
+    mouseY = e.clientY - rect.top;
+});
+
+canvas.addEventListener('click', () => {
+    if (gameRunning) {
+        shoot();
+    }
+});
+
+restartBtn.addEventListener('click', restartGame);
+menuBtn.addEventListener('click', returnToMenu);
+
+const mainMenu = document.getElementById('mainMenu');
+const startNewGameBtn = document.getElementById('startNewGameBtn');
+const levelBtns = document.querySelectorAll('.level-btn');
+
+function returnToMenu() {
+    gameRunning = false;
+    mainMenu.classList.remove('hidden');
+    canvas.classList.add('hidden');
+    gameOverElement.classList.add('hidden');
+}
+
+function startGame(level, progressive = false) {
+    currentLevel = level;
+    score = 0;
+    lives = 3;
+    gameRunning = true;
+    tutorialTextVisible = (level === 0);
+    isProgressivePlaythrough = progressive;
+    
+    mainMenu.classList.add('hidden');
+    canvas.classList.remove('hidden');
+    
+    scoreElement.textContent = score;
+    livesElement.textContent = lives;
+    document.getElementById('levelElement').textContent = currentLevel;
+    
+    initLevel(currentLevel);
+    updateGame();
+}
+
+async function loadLeaderboard() {
+    const leaderboardList = document.getElementById('leaderboardList');
+    leaderboardList.innerHTML = '<p>Načítání...</p>';
+    
+    try {
+        const response = await fetch('/.netlify/functions/getLeaderboard');
+        const data = await response.json();
+        
+        if (data.scores && data.scores.length > 0) {
+            leaderboardList.innerHTML = data.scores.map((entry, index) => `
+                <div class="leaderboard-entry">
+                    <span class="leaderboard-rank">${index + 1}.</span>
+                    <span class="leaderboard-name">${entry.player_name}</span>
+                    <span class="leaderboard-score">${entry.score} bodů (vlna ${entry.wave})</span>
+                </div>
+            `).join('');
+        } else {
+            leaderboardList.innerHTML = '<p>Žebříček je zatím prázdný. Buď první!</p>';
+        }
+    } catch (error) {
+        console.error('Chyba při načítání žebříčku:', error);
+        leaderboardList.innerHTML = '<p>Nepodařilo se načíst žebříček.</p>';
+    }
+}
+
+async function submitScore(playerName, score, wave) {
+    const submitMessage = document.getElementById('submitMessage');
+    submitMessage.textContent = 'Odesílání...';
+    submitMessage.style.color = '#4CAF50';
+    
+    try {
+        const response = await fetch('/.netlify/functions/submitScore', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                player_name: playerName,
+                score: score,
+                wave: wave
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok) {
+            submitMessage.textContent = '✓ Skóre úspěšně odesláno!';
+            submitMessage.style.color = '#4CAF50';
+            document.getElementById('playerName').value = '';
+            document.getElementById('submitScoreBtn').disabled = true;
+            loadLeaderboard();
+        } else {
+            submitMessage.textContent = '✗ ' + (data.error || 'Chyba při odesílání');
+            submitMessage.style.color = '#ff4444';
+        }
+    } catch (error) {
+        console.error('Chyba při odesílání skóre:', error);
+        submitMessage.textContent = '✗ Nepodařilo se odeslat skóre';
+        submitMessage.style.color = '#ff4444';
+    }
+}
+
+const submitScoreBtn = document.getElementById('submitScoreBtn');
+const playerNameInput = document.getElementById('playerName');
+
+submitScoreBtn.addEventListener('click', () => {
+    const playerName = playerNameInput.value.trim();
+    
+    if (!playerName) {
+        document.getElementById('submitMessage').textContent = 'Prosím zadej své jméno';
+        document.getElementById('submitMessage').style.color = '#ff4444';
+        return;
+    }
+    
+    if (playerName.length < 2) {
+        document.getElementById('submitMessage').textContent = 'Jméno musí mít alespoň 2 znaky';
+        document.getElementById('submitMessage').style.color = '#ff4444';
+        return;
+    }
+    
+    submitScore(playerName, score, progressiveWave);
+});
+
+const startProgressiveBtn = document.getElementById('startProgressiveBtn');
+
+startProgressiveBtn.addEventListener('click', () => {
+    mainMenu.classList.add('hidden');
+    canvas.classList.remove('hidden');
+    gameRunning = true;
+    score = 0;
+    lives = 3;
+    scoreElement.textContent = score;
+    livesElement.textContent = lives;
+    levelElement.textContent = 'Survival';
+    initProgressiveMode();
+    updateGame();
+});
+
+startNewGameBtn.addEventListener('click', () => {
+    startGame(0, true);
+});
+
+levelBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+        const level = parseInt(btn.getAttribute('data-level'));
+        startGame(level, false);
+    });
+});
