@@ -1411,6 +1411,7 @@ function initLevel(level) {
 function initProgressiveMode() {
     gameMap = progressiveMap.map;
     gameMode = 'progressive';
+    currentLevel = 1;
     progressiveWave = 1;
     enemiesKilledThisWave = 0;
     progressiveDifficulty = 1;
@@ -1573,7 +1574,7 @@ function updateGame() {
         drawTutorial();
     }
     
-    if (enemies.length === 0 && totalEnemies > 0) {
+    if (enemies.length === 0 && totalEnemies > 0 && gameMode !== 'progressive') {
         checkLevelComplete();
     }
 
