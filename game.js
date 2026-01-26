@@ -1439,46 +1439,52 @@ function initProgressiveMode() {
 }
 
 function spawnProgressiveWave() {
-    const enemiesInWave = Math.min(1 + Math.floor(progressiveWave / 2), 8);
+    let enemiesInWave;
+    let difficultyLevel;
+    
+    if (progressiveWave <= 12) {
+        enemiesInWave = progressiveWave;
+        difficultyLevel = 0;
+    } else {
+        enemiesInWave = 12;
+        difficultyLevel = progressiveWave - 12;
+    }
+    
     enemiesKilledThisWave = 0;
     
-    progressiveDifficulty = 1 + (progressiveWave - 1) * 0.05;
-    VISION_RANGE = Math.min(400, 200 + progressiveWave * 10);
-    HEARING_RANGE = Math.min(600, 300 + progressiveWave * 20);
-    ENEMY_SPEED = Math.min(2.2, 1.2 + progressiveWave * 0.05);
+    VISION_RANGE = 200 + difficultyLevel * 30;
+    HEARING_RANGE = 300 + difficultyLevel * 50;
+    ENEMY_SPEED = Math.min(2.5, 1.2 + difficultyLevel * 0.1);
+    ALERT_DURATION = Math.max(2000, 5000 - difficultyLevel * 500);
+    SEARCH_DURATION = 8000 + difficultyLevel * 2000;
+    
+    const spawnPoints = [
+        {x: 900, y: 100},
+        {x: 100, y: 100},
+        {x: 900, y: 600},
+        {x: 100, y: 600}
+    ];
     
     for (let i = 0; i < enemiesInWave; i++) {
-        let spawnX, spawnY, validSpawn = false;
-        let attempts = 0;
+        let spawnPoint;
         
-        while (!validSpawn && attempts < 50) {
-            spawnX = Math.random() * (gameMap[0].length * TILE_SIZE);
-            spawnY = Math.random() * (gameMap.length * TILE_SIZE);
-            
-            const tileX = Math.floor(spawnX / TILE_SIZE);
-            const tileY = Math.floor(spawnY / TILE_SIZE);
-            
-            if (tileY >= 0 && tileY < gameMap.length && tileX >= 0 && tileX < gameMap[0].length) {
-                if (gameMap[tileY][tileX] === 0) {
-                    const distToPlayer = Math.sqrt(
-                        Math.pow(spawnX - player.x, 2) + 
-                        Math.pow(spawnY - player.y, 2)
-                    );
-                    
-                    if (distToPlayer > 200) {
-                        validSpawn = true;
-                    }
-                }
-            }
-            attempts++;
+        if (enemiesInWave < 6) {
+            spawnPoint = spawnPoints[progressiveWave % spawnPoints.length];
+        } else {
+            spawnPoint = spawnPoints[i % spawnPoints.length];
         }
         
-        if (validSpawn) {
-            const enemy = new Enemy(spawnX, spawnY, []);
-            enemy.randomPatrol = true;
-            enemy.randomPatrolTimer = 300 + Math.random() * 300;
-            enemies.push(enemy);
-        }
+        const offsetX = (Math.random() - 0.5) * 60;
+        const offsetY = (Math.random() - 0.5) * 60;
+        const spawnX = spawnPoint.x + offsetX;
+        const spawnY = spawnPoint.y + offsetY;
+        
+        const validPos = findValidSpawnPosition(spawnX, spawnY);
+        
+        const enemy = new Enemy(validPos.x, validPos.y, []);
+        enemy.randomPatrol = true;
+        enemy.randomPatrolTimer = 100 + Math.random() * 200;
+        enemies.push(enemy);
     }
     
     totalEnemies = enemies.length;
