@@ -115,6 +115,7 @@ function initProgressiveMode() {
     state.progressiveWave = 1;
     state.enemiesKilledThisWave = 0;
     state.progressiveDifficulty = 1;
+    state.gameStartTime = Date.now();
     
     state.reset();
     
@@ -522,6 +523,9 @@ async function submitScore(playerName, score, wave) {
     submitMessage.textContent = 'Odesílání...';
     submitMessage.style.color = '#4CAF50';
     
+    // Výpočet délky hry v sekundách
+    const gameDuration = Math.floor((Date.now() - state.gameStartTime) / 1000);
+    
     try {
         const response = await fetch('/.netlify/functions/submitScore', {
             method: 'POST',
@@ -531,7 +535,8 @@ async function submitScore(playerName, score, wave) {
             body: JSON.stringify({
                 player_name: playerName,
                 score: score,
-                wave: wave
+                wave: wave,
+                game_duration: gameDuration
             })
         });
         
@@ -543,8 +548,32 @@ async function submitScore(playerName, score, wave) {
             await loadLeaderboard();
             document.getElementById('playerName').value = '';
         } else {
-            submitMessage.textContent = data.error || 'Chyba při odesílání skóre';
-            submitMessage.style.color = '#ff4444';
+            // Detekce anti-cheat zamítnutí
+            const errorMsg = data.error || 'Chyba při odesílání skóre';
+            const isCheating = errorMsg.includes('Podezřel') || 
+                              errorMsg.includes('Neplatné skóre pro danou vlnu') ||
+                              errorMsg.includes('herní čas');
+            
+            if (isCheating) {
+                // Troll zpráva pro cheatery 😈
+                submitMessage.innerHTML = '🚨 <strong>HA! CHEATER DETECTED!</strong> 🚨<br>' +
+                                         'Nice try, but our anti-cheat is watching you! 👀<br>' +
+                                         '<small>(' + errorMsg + ')</small>';
+                submitMessage.style.color = '#ff0000';
+                submitMessage.style.fontSize = '1.2em';
+                submitMessage.style.fontWeight = 'bold';
+                submitMessage.style.animation = 'shake 0.5s';
+                
+                // Přidat shake animaci
+                setTimeout(() => {
+                    submitMessage.style.animation = '';
+                    submitMessage.style.fontSize = '1em';
+                    submitMessage.style.fontWeight = 'normal';
+                }, 3000);
+            } else {
+                submitMessage.textContent = errorMsg;
+                submitMessage.style.color = '#ff4444';
+            }
         }
     } catch (error) {
         console.error('Chyba při odesílání skóre:', error);
