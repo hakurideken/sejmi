@@ -83,6 +83,13 @@ body {
     margin-bottom: 30px;
 }
 
+.game-over-buttons {
+    display: flex;
+    gap: 15px;
+    justify-content: center;
+    flex-wrap: wrap;
+}
+
 #restartBtn {
     padding: 15px 40px;
     font-size: 1.2em;
@@ -97,6 +104,23 @@ body {
 
 #restartBtn:hover {
     background: #45a049;
+    transform: scale(1.05);
+}
+
+#menuBtn {
+    padding: 15px 40px;
+    font-size: 1.2em;
+    background: #2196F3;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.3s;
+    font-weight: bold;
+}
+
+#menuBtn:hover {
+    background: #1976D2;
     transform: scale(1.05);
 }
 

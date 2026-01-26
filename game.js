@@ -5,6 +5,7 @@ const livesElement = document.getElementById('lives');
 const gameOverElement = document.getElementById('gameOver');
 const finalScoreElement = document.getElementById('finalScore');
 const restartBtn = document.getElementById('restartBtn');
+const menuBtn = document.getElementById('menuBtn');
 
 let gameRunning = true;
 let score = 0;
@@ -20,6 +21,7 @@ let gameMode = 'classic';
 let progressiveWave = 1;
 let enemiesKilledThisWave = 0;
 let progressiveDifficulty = 1;
+let isProgressivePlaythrough = false;
 
 const TILE_SIZE = 40;
 const SPAWN_SAFE_ZONE_RADIUS = 3;
@@ -1602,8 +1604,18 @@ function endGame() {
         document.getElementById('levelInfo').textContent = `Dosáhl jsi vlny ${progressiveWave}`;
         leaderboardSection.classList.remove('hidden');
         loadLeaderboard();
+        document.getElementById('restartBtn').textContent = 'Hrát znovu';
+        menuBtn.style.display = 'inline-block';
     } else {
-        document.getElementById('levelInfo').textContent = `Dosáhl jsi úrovně ${currentLevel}`;
+        if (isProgressivePlaythrough) {
+            document.getElementById('levelInfo').textContent = `Zemřel jsi na úrovni ${currentLevel}`;
+            document.getElementById('restartBtn').textContent = 'Hrát znovu';
+            menuBtn.style.display = 'inline-block';
+        } else {
+            document.getElementById('levelInfo').textContent = `Zemřel jsi na úrovni ${currentLevel}`;
+            document.getElementById('restartBtn').textContent = 'Zkusit znovu';
+            menuBtn.style.display = 'inline-block';
+        }
         leaderboardSection.classList.add('hidden');
     }
     
@@ -1614,14 +1626,25 @@ function checkLevelComplete() {
     gameRunning = false;
     finalScoreElement.textContent = score;
     
+    if (!isProgressivePlaythrough) {
+        document.getElementById('gameOverTitle').textContent = 'Úroveň dokončena!';
+        document.getElementById('levelInfo').textContent = 'Gratulujeme!';
+        document.getElementById('restartBtn').textContent = 'Zpět do menu';
+        menuBtn.style.display = 'none';
+        gameOverElement.classList.remove('hidden');
+        return;
+    }
+    
     if (currentLevel < levels.length) {
         document.getElementById('gameOverTitle').textContent = 'Úroveň dokončena!';
         document.getElementById('levelInfo').textContent = `Připrav se na úroveň ${currentLevel + 1}`;
         document.getElementById('restartBtn').textContent = 'Další úroveň';
+        menuBtn.style.display = 'inline-block';
     } else {
         document.getElementById('gameOverTitle').textContent = 'Gratulujeme!';
         document.getElementById('levelInfo').textContent = 'Dokončil jsi všechny úrovně!';
         document.getElementById('restartBtn').textContent = 'Hrát znovu';
+        menuBtn.style.display = 'inline-block';
     }
     
     gameOverElement.classList.remove('hidden');
@@ -1631,8 +1654,15 @@ function restartGame() {
     const wasComplete = enemies.length === 0 && totalEnemies > 0;
     const wasDead = lives <= 0;
     
+    if (!isProgressivePlaythrough && wasComplete) {
+        returnToMenu();
+        return;
+    }
+    
     if (wasDead) {
-        currentLevel = tutorialCompleted ? 1 : 0;
+        if (isProgressivePlaythrough) {
+            currentLevel = 1;
+        }
         score = 0;
         lives = 3;
     } else if (wasComplete && currentLevel < levels.length - 1) {
@@ -1653,7 +1683,13 @@ function restartGame() {
     gameOverElement.classList.add('hidden');
     document.getElementById('restartBtn').textContent = 'Hrát znovu';
     lastShot = 0;
-    initLevel(currentLevel);
+    
+    if (gameMode === 'progressive') {
+        initProgressiveMode();
+    } else {
+        initLevel(currentLevel);
+    }
+    
     updateGame();
 }
 
@@ -1693,6 +1729,7 @@ canvas.addEventListener('click', () => {
 });
 
 restartBtn.addEventListener('click', restartGame);
+menuBtn.addEventListener('click', returnToMenu);
 
 const mainMenu = document.getElementById('mainMenu');
 const startNewGameBtn = document.getElementById('startNewGameBtn');
@@ -1705,12 +1742,13 @@ function returnToMenu() {
     gameOverElement.classList.add('hidden');
 }
 
-function startGame(level) {
+function startGame(level, progressive = false) {
     currentLevel = level;
     score = 0;
     lives = 3;
     gameRunning = true;
     tutorialTextVisible = (level === 0);
+    isProgressivePlaythrough = progressive;
     
     mainMenu.classList.add('hidden');
     canvas.classList.remove('hidden');
@@ -1822,12 +1860,12 @@ startProgressiveBtn.addEventListener('click', () => {
 });
 
 startNewGameBtn.addEventListener('click', () => {
-    startGame(0);
+    startGame(0, true);
 });
 
 levelBtns.forEach(btn => {
     btn.addEventListener('click', () => {
         const level = parseInt(btn.getAttribute('data-level'));
-        startGame(level);
+        startGame(level, false);
     });
 });
