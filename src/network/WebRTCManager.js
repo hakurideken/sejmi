@@ -3,14 +3,14 @@ const SIGNAL_URL = '/.netlify/functions/pvp-signal';
 const RTC_CONFIG = {
     iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'stun:stun1.l.google.com:19302' }
+        { urls: 'stun:stun1.l.google.com:19302' },
+        { urls: 'stun:stun2.l.google.com:19302' }
     ]
 };
 
-/**
- * Čeká na dokončení ICE gatheringu.
- * Výsledný localDescription pak obsahuje všechny kandidáty přímo v SDP.
- */
+const CONNECT_TIMEOUT_MS = 30_000; // 30 s – pak nahlásíme chybu
+
+/** Čeká na dokončení ICE gatheringu (max 10 s). */
 function waitForIceComplete(pc) {
     return new Promise((resolve) => {
         if (pc.iceGatheringState === 'complete') { resolve(); return; }
@@ -21,24 +21,26 @@ function waitForIceComplete(pc) {
             }
         };
         pc.addEventListener('icegatheringstatechange', handler);
-        // Timeout pojistka – po 8 s jedeme dál s tím, co máme
-        setTimeout(resolve, 8000);
+        setTimeout(resolve, 10_000);
     });
 }
 
 export class WebRTCManager {
     constructor() {
-        this.pc = null;
+        this.pc      = null;
         this.channel = null;
-        this.role = null;       // 'spy' | 'guard'
+        this.role    = null;        // 'spy' | 'guard'
         this.roomCode = null;
-        this._pollTimer = null;
 
-        // Callbacky
-        this.onMessage = null;
-        this.onConnected = null;
+        this._pollTimer    = null;
+        this._timeoutTimer = null;
+        this._connected    = false; // guard – zavoláme onConnected nejvýše jednou
+
+        // Callbacky nastavené zvenku
+        this.onMessage      = null;
+        this.onConnected    = null;
         this.onDisconnected = null;
-        this.onStatusChange = null; // (text) => void
+        this.onStatusChange = null;
     }
 
     // ─────────────────────────── PUBLIC API ───────────────────────────
@@ -51,18 +53,19 @@ export class WebRTCManager {
         this.roomCode = res.code;
         this.role = 'spy';
 
-        this._createPC();
+        this._initPC();
 
-        // DataChannel vytváří iniciátor (špion)
-        this.channel = this.pc.createDataChannel('game', { ordered: false, maxRetransmits: 0 });
-        this._setupChannel(this.channel);
+        // DataChannel vytváří iniciátor (špion) – reliable pro lepší kompatibilitu
+        this.channel = this.pc.createDataChannel('game');
+        this._wireChannel(this.channel);
 
-        this._status('Generuji offer…');
+        this._status('Generuji offer (čekám na ICE)…');
         const offer = await this.pc.createOffer();
         await this.pc.setLocalDescription(offer);
         await waitForIceComplete(this.pc);
 
-        this._status('Ukladám offer…');
+        const candidateCount = (this.pc.localDescription.sdp.match(/a=candidate:/g) || []).length;
+        this._status(`Ukládám offer (${candidateCount} ICE kandidátů)…`);
         await this._post({
             action: 'offer',
             room: this.roomCode,
@@ -70,7 +73,8 @@ export class WebRTCManager {
         });
 
         this._status('Čekám na strážce…');
-        this._startPolling();
+        this._startAnswerPoll();
+        this._startConnectTimeout();
 
         return this.roomCode;
     }
@@ -82,14 +86,14 @@ export class WebRTCManager {
 
         this._status('Hledám místnost…');
         const room = await this._get(`action=poll&room=${this.roomCode}`);
-        if (!room.offer) throw new Error('Místnost nenalezena nebo není připravena.');
+        if (!room.offer) throw new Error('Místnost nenalezena nebo ještě nemá offer.');
 
-        this._createPC();
+        this._initPC();
 
-        // DataChannel přijme příchozí od špiona
+        // Kanál přijde od špiona přes 'datachannel' event
         this.pc.addEventListener('datachannel', (evt) => {
             this.channel = evt.channel;
-            this._setupChannel(this.channel);
+            this._wireChannel(this.channel);
         });
 
         this._status('Zpracovávám offer…');
@@ -97,16 +101,20 @@ export class WebRTCManager {
 
         const answer = await this.pc.createAnswer();
         await this.pc.setLocalDescription(answer);
+
+        this._status('Čekám na ICE kandidáty…');
         await waitForIceComplete(this.pc);
 
-        this._status('Posílám answer…');
+        const candidateCount = (this.pc.localDescription.sdp.match(/a=candidate:/g) || []).length;
+        this._status(`Odesílám answer (${candidateCount} kandidátů)…`);
         await this._post({
             action: 'answer',
             room: this.roomCode,
             answer: JSON.stringify(this.pc.localDescription)
         });
 
-        this._status('Čekám na spojení…');
+        this._status('Čekám na navázání spojení…');
+        this._startConnectTimeout();
     }
 
     /** Odešle data přes DataChannel (pokud je otevřený). */
@@ -121,7 +129,7 @@ export class WebRTCManager {
     }
 
     close() {
-        this._stopPolling();
+        this._stopAll();
         try { this.channel?.close(); } catch { /* */ }
         try { this.pc?.close(); } catch { /* */ }
         this.channel = null;
@@ -130,27 +138,33 @@ export class WebRTCManager {
 
     // ─────────────────────────── PRIVATE ───────────────────────────
 
-    _createPC() {
+    /** Vytvoří RTCPeerConnection a napojí všechny state-change listenery. */
+    _initPC() {
         this.pc = new RTCPeerConnection(RTC_CONFIG);
+
+        // connectionstatechange (hlavní, ne vždy spolehlivý)
         this.pc.addEventListener('connectionstatechange', () => {
             const s = this.pc.connectionState;
-            if (s === 'connected') {
-                this._stopPolling();
-                this._status('Připojeno!');
-                this.onConnected?.();
-            }
-            if (s === 'disconnected' || s === 'failed' || s === 'closed') {
-                this._stopPolling();
-                this.onDisconnected?.();
-            }
+            this._status(`Stav spojení: ${s}`);
+            if (s === 'connected')                              this._onConnectedOnce();
+            if (s === 'failed' || s === 'closed')              this._onFailed('Spojení selhalo.');
+        });
+
+        // iceconnectionstatechange (záložní, spolehlivější v některých prohlížečích)
+        this.pc.addEventListener('iceconnectionstatechange', () => {
+            const s = this.pc.iceConnectionState;
+            this._status(`ICE stav: ${s}`);
+            if (s === 'connected' || s === 'completed')        this._onConnectedOnce();
+            if (s === 'failed')                                this._onFailed('ICE spojení selhalo.');
+            if (s === 'disconnected')                          this.onDisconnected?.();
         });
     }
 
-    _setupChannel(ch) {
+    /** Napojí DataChannel na eventy. */
+    _wireChannel(ch) {
         ch.addEventListener('open', () => {
-            this._stopPolling();
-            this._status('Připojeno!');
-            this.onConnected?.();
+            this._status('DataChannel otevřen!');
+            this._onConnectedOnce();
         });
         ch.addEventListener('close', () => this.onDisconnected?.());
         ch.addEventListener('message', (evt) => {
@@ -161,25 +175,58 @@ export class WebRTCManager {
         });
     }
 
-    /** Špion polluje odpověď strážce každé 2 s. */
-    _startPolling() {
-        this._stopPolling();
+    /** Zavolá onConnected právě jednou (brání double-fire). */
+    _onConnectedOnce() {
+        if (this._connected) return;
+        this._connected = true;
+        this._stopAll();
+        this._status('Připojeno! ✅');
+        this.onConnected?.();
+    }
+
+    /** Polls každé 2 s na spy straně, hledá answer. */
+    _startAnswerPoll() {
+        this._stopPoll();
         this._pollTimer = setInterval(async () => {
             try {
                 const data = await this._get(`action=poll&room=${this.roomCode}`);
-                if (data.answer && this.pc?.signalingState !== 'stable') {
-                    this._stopPolling();
+                if (data.answer && !this._connected
+                    && this.pc?.signalingState === 'have-local-offer') {
+                    this._stopPoll();
+                    this._status('Answer přijat – navazuji ICE…');
                     await this.pc.setRemoteDescription(
                         new RTCSessionDescription(JSON.parse(data.answer))
                     );
-                    this._status('Answer přijat – navazuji spojení…');
                 }
-            } catch { /* síťová chyba, zkusit znovu */ }
+            } catch (e) {
+                this._status('Chyba pollování: ' + e.message);
+            }
         }, 2000);
     }
 
-    _stopPolling() {
+    /** Pokud se nepřipojíme do CONNECT_TIMEOUT_MS, nahlásíme chybu. */
+    _startConnectTimeout() {
+        this._timeoutTimer = setTimeout(() => {
+            if (!this._connected) {
+                this._onFailed('Timeout: spojení se nepodařilo navázat do 30 s.');
+            }
+        }, CONNECT_TIMEOUT_MS);
+    }
+
+    _onFailed(msg) {
+        if (this._connected) return;
+        this._stopAll();
+        this._status('❌ ' + msg);
+        this.onDisconnected?.();
+    }
+
+    _stopPoll() {
         if (this._pollTimer) { clearInterval(this._pollTimer); this._pollTimer = null; }
+    }
+
+    _stopAll() {
+        this._stopPoll();
+        if (this._timeoutTimer) { clearTimeout(this._timeoutTimer); this._timeoutTimer = null; }
     }
 
     _status(text) { this.onStatusChange?.(text); }
