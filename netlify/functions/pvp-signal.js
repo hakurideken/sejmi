@@ -14,10 +14,30 @@ function err(code, msg) {
     return { statusCode: code, headers: HEADERS, body: JSON.stringify({ error: msg }) };
 }
 
+/** Vytvoří tabulku při prvním použití (idempotentní). */
+async function ensureTable(sql) {
+    await sql`
+        CREATE TABLE IF NOT EXISTS pvp_rooms (
+            id         SERIAL PRIMARY KEY,
+            room_code  VARCHAR(6) UNIQUE NOT NULL,
+            offer      TEXT,
+            answer     TEXT,
+            status     VARCHAR(20) DEFAULT 'waiting',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    `;
+}
+
 exports.handler = async (event) => {
     if (event.httpMethod === 'OPTIONS') return { statusCode: 200, headers: HEADERS, body: '' };
 
     const sql = neon(process.env.NETLIFY_DATABASE_URL || process.env.DATABASE_URL);
+
+    // Zajistit existenci tabulky (CREATE TABLE IF NOT EXISTS je levná operace)
+    try { await ensureTable(sql); } catch (e) {
+        console.error('ensureTable failed:', e);
+        return err(500, 'Chyba databáze: ' + e.message);
+    }
 
     // ──────────────────────── GET: dotaz na místnost ────────────────────────
     if (event.httpMethod === 'GET') {
