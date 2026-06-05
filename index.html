@@ -20,6 +20,7 @@
             </div>
             <div id="mainMenu" class="main-menu">
                 <h2>Vyberte režim hry</h2>
+                <button id="startPvPBtn" class="menu-btn pvp">⚔️ PvP – Špion vs. Strážce</button>
                 <button id="startProgressiveBtn" class="menu-btn progressive">🔥 Progresivní mód (Survival)</button>
                 <button id="startNewGameBtn" class="menu-btn primary">Hrát od začátku (Tutorial)</button>
                 <div class="level-selection">
@@ -36,6 +37,39 @@
                         <button class="level-btn" data-level="9">Úroveň 9</button>
                         <button class="level-btn" data-level="10">Úroveň 10</button>
                     </div>
+                </div>
+            </div>
+
+            <!-- ══════════════════ PvP LOBBY ══════════════════ -->
+            <div id="pvpLobby" class="pvp-lobby hidden">
+                <h2>⚔️ PvP – Špion vs. Strážce</h2>
+
+                <!-- Výběr akce -->
+                <div id="pvpSetup">
+                    <p class="pvp-desc">
+                        <strong>Špion</strong> – WASD + myš + střelba<br>
+                        <strong>Strážce</strong> – klik vybere stráže, WASD je pohybuje
+                    </p>
+                    <button id="pvpCreateBtn" class="menu-btn pvp">🔑 Vytvořit místnost</button>
+                    <div class="pvp-divider">— NEBO —</div>
+                    <div class="pvp-join-row">
+                        <input id="pvpCodeInput" type="text" maxlength="6"
+                               placeholder="Kód místnosti" autocomplete="off" spellcheck="false">
+                        <button id="pvpJoinBtn" class="menu-btn pvp">🚪 Připojit se</button>
+                    </div>
+                    <button id="pvpBackBtn" class="menu-btn-secondary">← Zpět do menu</button>
+                </div>
+
+                <!-- Čekání / propojování -->
+                <div id="pvpWaiting" class="hidden">
+                    <div id="pvpRoomDisplay" class="pvp-room-display hidden">
+                        <p>Kód místnosti:</p>
+                        <span id="pvpRoomCode" class="pvp-room-code">------</span>
+                        <p class="pvp-room-hint">Pošli kód kamarádovi!</p>
+                    </div>
+                    <div id="pvpStatus" class="pvp-status">⏳ Připojuji…</div>
+                    <div id="pvpError"  class="pvp-error hidden"></div>
+                    <button id="pvpCancelBtn" class="menu-btn-secondary">✕ Zrušit</button>
                 </div>
             </div>
         <canvas id="gameCanvas" width="1200" height="800" class="hidden"></canvas>

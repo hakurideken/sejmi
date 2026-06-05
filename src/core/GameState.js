@@ -8,7 +8,13 @@ export class GameState {
         this.tutorialCompleted = false;
         this.tutorialTextVisible = true;
         this.playerInvisible = true;
-        this.gameMode = 'classic';
+        this.gameMode = 'classic'; // 'classic' | 'progressive' | 'pvp'
+
+        // PvP stav
+        this.pvpRole    = null;   // 'spy' | 'guard'
+        this.pvpMode    = null;   // instance PvPMode
+        this.pvpWinner  = null;   // 'spy' | 'guard'
+        this.pvpConnected = false;
         this.progressiveWave = 1;
         this.enemiesKilledThisWave = 0;
         this.progressiveDifficulty = 1;
