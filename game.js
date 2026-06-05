@@ -10,6 +10,9 @@ import { HealthPickup } from './src/entities/HealthPickup.js';
 import { findValidSpawnPosition, isInSpawnZone } from './src/utils/collision.js';
 import { progressiveMap } from './src/data/levels.js';
 import { levels } from './src/data/levelsData.js';
+import { pvpMapData } from './src/data/pvpMapData.js';
+import { WebRTCManager } from './src/network/WebRTCManager.js';
+import { PvPMode } from './src/modes/PvPMode.js';
 
 // DOM Elements
 const canvas = document.getElementById('gameCanvas');
@@ -24,6 +27,19 @@ const mainMenu = document.getElementById('mainMenu');
 const startProgressiveBtn = document.getElementById('startProgressiveBtn');
 const startNewGameBtn = document.getElementById('startNewGameBtn');
 const levelBtns = document.querySelectorAll('.level-btn');
+
+// PvP DOM Elements
+const pvpLobby      = document.getElementById('pvpLobby');
+const pvpSetup      = document.getElementById('pvpSetup');
+const pvpWaiting    = document.getElementById('pvpWaiting');
+const pvpRoomDisplay = document.getElementById('pvpRoomDisplay');
+const pvpRoomCode   = document.getElementById('pvpRoomCode');
+const pvpStatus     = document.getElementById('pvpStatus');
+const pvpError      = document.getElementById('pvpError');
+const pvpCodeInput  = document.getElementById('pvpCodeInput');
+
+/** Aktuální WebRTC manager (null když není PvP). */
+let webrtc = null;
 
 // Game State
 const state = new GameState();
@@ -207,9 +223,19 @@ function updateGame() {
     const currentTime = performance.now();
     state.deltaTime = (currentTime - state.lastFrameTime) / 1000;
     state.lastFrameTime = currentTime;
-    
+
     // Omezení delta time (pokud tab ztratí focus)
     if (state.deltaTime > 0.1) state.deltaTime = 0.016;
+
+    // ── PvP strážce: renderuje přijatý stav, posílá vstupy ──
+    if (state.gameMode === 'pvp' && state.pvpRole === 'guard') {
+        if (state.pvpMode) {
+            state.pvpMode.updateGuard();
+            state.pvpMode.renderGuardView();
+        }
+        if (state.gameRunning) requestAnimationFrame(updateGame);
+        return;
+    }
 
     renderer.clear();
     renderer.drawMap(state.gameMap);
@@ -275,12 +301,14 @@ function updateGame() {
             if (bullet.collidesWith(state.player) && state.lives > 0) {
                 createExplosion(state.player.x, state.player.y, '#ff0000', state.particles);
                 state.bullets.splice(bulletIndex, 1);
-                if (state.currentLevel !== 0) {
+                if (state.currentLevel !== 0 || state.gameMode === 'pvp') {
                     state.lives--;
                     livesElement.textContent = state.lives;
                     if (state.lives <= 0) {
                         state.lives = 0;
                         livesElement.textContent = state.lives;
+                        // PvP: strážce vyhrál likvidací špiona
+                        if (state.gameMode === 'pvp') state.pvpWinner = 'guard';
                         endGame();
                     }
                 }
@@ -288,9 +316,14 @@ function updateGame() {
         }
     });
 
+    // ── PvP špion: aplikuj vstup strážce před updatem nepřátel ──
+    if (state.gameMode === 'pvp' && state.pvpRole === 'spy' && state.pvpMode) {
+        state.pvpMode.updateSpy();
+    }
+
     state.enemies.forEach(enemy => {
         if (!isInSpawnZone(enemy.x, enemy.y, state.spawnSafeZone) || !state.playerInvisible) {
-            enemy.update(state.player, state.gameMap, state.soundEvents, state.bullets, 
+            enemy.update(state.player, state.gameMap, state.soundEvents, state.bullets,
                         state.VISION_RANGE, state.HEARING_RANGE, state.ALERT_DURATION, state.SEARCH_DURATION,
                         state.enemies, state.playerInvisible, state.deltaTime);
         }
@@ -313,7 +346,13 @@ function updateGame() {
         renderer.drawTutorial(state.tutorialTextVisible);
     }
     
-    if (state.enemies.length === 0 && state.totalEnemies > 0 && state.gameMode !== 'progressive') {
+    if (state.gameMode === 'pvp') {
+        // Špion zlikvidoval všechny strážce → špion vyhrál
+        if (state.enemies.length === 0 && state.totalEnemies > 0) {
+            state.pvpWinner = 'spy';
+            endGame();
+        }
+    } else if (state.enemies.length === 0 && state.totalEnemies > 0 && state.gameMode !== 'progressive') {
         checkLevelComplete();
     }
 
@@ -330,13 +369,84 @@ function updateGame() {
     }
 }
 
+/** Inicializuje PvP herní mód po navázání WebRTC spojení. */
+function initPvPGame() {
+    state.gameMap = pvpMapData.map;
+    state.gameMode = 'pvp';
+    state.score = 0;
+    state.lives = 3;
+    state.gameRunning = true;
+    state.pvpWinner = null;
+
+    state.reset();
+    resizeCanvas(state.gameMap);
+
+    state.VISION_RANGE  = CONFIG.ENEMY.BASE_VISION_RANGE;
+    state.HEARING_RANGE = CONFIG.ENEMY.BASE_HEARING_RANGE;
+    state.ENEMY_SPEED   = CONFIG.ENEMY.BASE_SPEED;
+    state.ALERT_DURATION  = CONFIG.ENEMY.BASE_ALERT_DURATION;
+    state.SEARCH_DURATION = CONFIG.ENEMY.BASE_SEARCH_DURATION;
+
+    if (state.pvpRole === 'spy') {
+        const pos = findValidSpawnPosition(
+            pvpMapData.playerStart.x, pvpMapData.playerStart.y, state.gameMap
+        );
+        state.player = new Player(pos.x, pos.y);
+        state.spawnSafeZone = { x: state.player.x, y: state.player.y };
+        state.playerInvisible = true;
+
+        pvpMapData.enemies.forEach(ed => {
+            const vp = findValidSpawnPosition(ed.x, ed.y, state.gameMap);
+            const e = new Enemy(vp.x, vp.y, []);
+            e.randomPatrol = true;
+            e.randomPatrolTimer = 100 + Math.random() * 200;
+            e.speed = state.ENEMY_SPEED;
+            e.visionRange = state.VISION_RANGE;
+            state.enemies.push(e);
+        });
+        state.totalEnemies = state.enemies.length;
+    }
+
+    // PvPMode orchestrátor
+    state.pvpMode = new PvPMode(state, renderer, webrtc, canvas, ctx);
+    // Strážce: konec hry přijatý od špiona
+    state.pvpMode.onGameOver = () => endGame();
+
+    // Skrýt lobby, ukázat canvas
+    pvpLobby.classList.add('hidden');
+    canvas.classList.remove('hidden');
+    document.getElementById('leaderboardPanel').classList.add('hidden');
+
+    scoreElement.textContent  = state.score;
+    livesElement.textContent  = state.lives;
+    document.getElementById('levelElement').textContent = 'PvP';
+
+    updateGame();
+}
+
 function endGame() {
     state.gameRunning = false;
     finalScoreElement.textContent = state.score;
     document.getElementById('gameOverTitle').textContent = 'Konec hry!';
-    
+
+    // ── PvP konec ──
+    if (state.gameMode === 'pvp') {
+        const wonAsspy   = state.pvpWinner === 'spy'   && state.pvpRole === 'spy';
+        const wonAsguard = state.pvpWinner === 'guard' && state.pvpRole === 'guard';
+        const title = wonAsspy || wonAsguard ? '🏆 Vyhrál jsi!' : '💀 Prohrál jsi!';
+        const desc  = state.pvpWinner === 'spy' ? '🕵️ Špion zlikvidoval všechny strážce!'
+                                                 : '🛡️ Strážce zastavil špiona!';
+        document.getElementById('gameOverTitle').textContent = title;
+        document.getElementById('levelInfo').textContent = desc;
+        document.getElementById('leaderboardSection').classList.add('hidden');
+        document.getElementById('restartBtn').textContent = 'Zpět do menu';
+        menuBtn.style.display = 'none';
+        gameOverElement.classList.remove('hidden');
+        return;
+    }
+
     const leaderboardSection = document.getElementById('leaderboardSection');
-    
+
     if (state.gameMode === 'progressive') {
         document.getElementById('levelInfo').textContent = `Dosáhl jsi vlny ${state.progressiveWave}`;
         leaderboardSection.classList.remove('hidden');
@@ -388,6 +498,9 @@ function checkLevelComplete() {
 }
 
 function restartGame() {
+    // PvP: po konci hry vždy zpět do menu (nelze restartovat síťovou hru)
+    if (state.gameMode === 'pvp') { returnToMenu(); return; }
+
     const wasComplete = state.enemies.length === 0 && state.totalEnemies > 0;
     const wasDead = state.lives <= 0;
     
@@ -438,10 +551,24 @@ function returnToMenu() {
     state.gameMode = 'classic';
     state.isProgressivePlaythrough = false;
     state.currentLevel = 0;
-    
+
+    // Uklidit PvP
+    if (state.pvpMode) { state.pvpMode.destroy(); state.pvpMode = null; }
+    if (webrtc)        { webrtc.close(); webrtc = null; }
+    state.pvpRole     = null;
+    state.pvpWinner   = null;
+    state.pvpConnected = false;
+
     // Vyčistit canvas
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    
+
+    pvpLobby.classList.add('hidden');
+    pvpWaiting.classList.add('hidden');
+    pvpSetup.classList.remove('hidden');
+    pvpRoomDisplay.classList.add('hidden');
+    pvpCodeInput.value = '';
+    pvpError.classList.add('hidden');
+
     mainMenu.classList.remove('hidden');
     canvas.classList.add('hidden');
     gameOverElement.classList.add('hidden');
@@ -611,10 +738,11 @@ canvas.addEventListener('mousemove', (e) => {
     state.mouseY = e.clientY - rect.top;
 });
 
-canvas.addEventListener('click', () => {
-    if (state.gameRunning) {
-        shoot();
-    }
+canvas.addEventListener('click', (e) => {
+    if (!state.gameRunning) return;
+    // PvP strážce: klik zpracovává PvPMode
+    if (state.gameMode === 'pvp' && state.pvpRole === 'guard') return;
+    shoot();
 });
 
 restartBtn.addEventListener('click', restartGame);
@@ -662,6 +790,123 @@ document.getElementById('submitScoreBtn').addEventListener('click', () => {
         submitMessage.style.color = '#ff4444';
     }
 });
+
+// ═══════════════════════════════════════════════════════════════
+//  PvP LOBBY – event listenery
+// ═══════════════════════════════════════════════════════════════
+
+/** Zobrazí chybu v PvP lobby. */
+function pvpShowError(msg) {
+    pvpError.textContent = msg;
+    pvpError.classList.remove('hidden');
+}
+
+/** Přejde ze setupu na čekací obrazovku. */
+function pvpShowWaiting(code) {
+    pvpSetup.classList.add('hidden');
+    pvpWaiting.classList.remove('hidden');
+    if (code) {
+        pvpRoomCode.textContent = code;
+        pvpRoomDisplay.classList.remove('hidden');
+    }
+}
+
+/** Spustí hru pro oba hráče po navázání spojení. */
+function pvpOnConnected() {
+    state.pvpConnected = true;
+    pvpStatus.textContent = '✅ Spojeno! Spouštím hru…';
+    setTimeout(initPvPGame, 800);
+}
+
+/** Tlačítko "Vytvořit místnost" (špion). */
+document.getElementById('pvpCreateBtn').addEventListener('click', async () => {
+    pvpError.classList.add('hidden');
+    pvpStatus.textContent = '⏳ Připojuji…';
+
+    webrtc = new WebRTCManager();
+    webrtc.onStatusChange = (txt) => { pvpStatus.textContent = txt; };
+    webrtc.onConnected    = pvpOnConnected;
+    webrtc.onDisconnected = () => {
+        if (state.gameMode === 'pvp') {
+            state.gameRunning = false;
+            alert('Spojení bylo přerušeno.');
+            returnToMenu();
+        }
+    };
+
+    try {
+        const code = await webrtc.createRoom();
+        state.pvpRole = 'spy';
+        pvpShowWaiting(code);
+    } catch (e) {
+        webrtc = null;
+        pvpShowError('Nepodařilo se vytvořit místnost: ' + e.message);
+    }
+});
+
+/** Tlačítko "Připojit se" (strážce). */
+document.getElementById('pvpJoinBtn').addEventListener('click', async () => {
+    const code = pvpCodeInput.value.trim().toUpperCase();
+    if (code.length < 4) { pvpShowError('Zadej platný kód místnosti.'); return; }
+
+    pvpError.classList.add('hidden');
+    pvpStatus.textContent = '⏳ Připojuji se…';
+
+    webrtc = new WebRTCManager();
+    webrtc.onStatusChange = (txt) => { pvpStatus.textContent = txt; };
+    webrtc.onConnected    = pvpOnConnected;
+    webrtc.onDisconnected = () => {
+        if (state.gameMode === 'pvp') {
+            state.gameRunning = false;
+            alert('Spojení bylo přerušeno.');
+            returnToMenu();
+        }
+    };
+
+    try {
+        state.pvpRole = 'guard';
+        pvpShowWaiting(null);
+        await webrtc.joinRoom(code);
+    } catch (e) {
+        webrtc = null;
+        pvpWaiting.classList.add('hidden');
+        pvpSetup.classList.remove('hidden');
+        pvpShowError('Nepodařilo se připojit: ' + e.message);
+    }
+});
+
+/** Tlačítko "Zpět do menu" v lobby setupu. */
+document.getElementById('pvpBackBtn').addEventListener('click', () => {
+    pvpLobby.classList.add('hidden');
+    mainMenu.classList.remove('hidden');
+});
+
+/** Tlačítko "Zrušit" v čekací obrazovce. */
+document.getElementById('pvpCancelBtn').addEventListener('click', () => {
+    if (webrtc) { webrtc.close(); webrtc = null; }
+    pvpWaiting.classList.add('hidden');
+    pvpSetup.classList.remove('hidden');
+    pvpRoomDisplay.classList.add('hidden');
+    pvpError.classList.add('hidden');
+    pvpCodeInput.value = '';
+    state.pvpRole = null;
+});
+
+/** Klik na canvas: strážce vybírá / střílí strážce. */
+canvas.addEventListener('click', (e) => {
+    if (state.gameMode !== 'pvp' || state.pvpRole !== 'guard' || !state.pvpMode) return;
+    const rect = canvas.getBoundingClientRect();
+    state.pvpMode.handleGuardClick(e.clientX - rect.left, e.clientY - rect.top);
+});
+
+/** Tlačítko "PvP" v hlavním menu. */
+document.getElementById('startPvPBtn').addEventListener('click', () => {
+    mainMenu.classList.add('hidden');
+    document.getElementById('leaderboardPanel').classList.add('hidden');
+    pvpLobby.classList.remove('hidden');
+});
+
+// ═══════════════════════════════════════════════════════════════
 
 // Načíst žebříček při startu stránky
 loadMenuLeaderboard();

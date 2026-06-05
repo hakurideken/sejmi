@@ -1,5 +1,6 @@
 import { CONFIG } from '../config/constants.js';
 import { findPath } from '../utils/pathfinding.js';
+import { checkWallCollision } from '../utils/collision.js';
 import { Bullet } from './Bullet.js';
 
 export class Enemy {
@@ -32,6 +33,10 @@ export class Enemy {
         this.returningToPatrol = false;
         this.pauseTimer = 0;
         this.isBoss = false;
+
+        // PvP: přímé ovládání strážcem
+        this.isPlayerControlled = false;
+        this.guardInput = null; // { keys, mouseX, mouseY, shooting }
     }
 
     update(player, gameMap, soundEvents, bullets, VISION_RANGE, HEARING_RANGE, ALERT_DURATION, SEARCH_DURATION, enemies, playerInvisible, deltaTime = 0.016) {
@@ -49,6 +54,12 @@ export class Enemy {
         this.deltaTime = deltaTime;
         
         this.shootCooldown = Math.max(0, this.shootCooldown - deltaTime * 1000);
+
+        // PvP: přímé ovládání strážcem (přebije AI)
+        if (this.isPlayerControlled && this.guardInput) {
+            this._handleGuardControl();
+            return;
+        }
 
         switch(this.state) {
             case 'patrol':
@@ -432,6 +443,39 @@ export class Enemy {
         const bulletX = this.x + Math.cos(this.angle) * this.size;
         const bulletY = this.y + Math.sin(this.angle) * this.size;
         this.bullets.push(new Bullet(bulletX, bulletY, this.angle, false));
+    }
+
+    /**
+     * PvP: pohyb a střelba ovládaná strážcem (přebíjí AI).
+     */
+    _handleGuardControl() {
+        const { keys, mouseX, mouseY, shooting } = this.guardInput;
+
+        let dx = 0, dy = 0;
+        if (keys.w) dy -= 1;
+        if (keys.s) dy += 1;
+        if (keys.a) dx -= 1;
+        if (keys.d) dx += 1;
+
+        if (dx !== 0 || dy !== 0) {
+            const len = Math.sqrt(dx * dx + dy * dy);
+            const moveX = (dx / len) * this.speed * 60 * this.deltaTime;
+            const moveY = (dy / len) * this.speed * 60 * this.deltaTime;
+
+            if (!checkWallCollision(this.x + moveX, this.y, this.gameMap)) this.x += moveX;
+            if (!checkWallCollision(this.x, this.y + moveY, this.gameMap)) this.y += moveY;
+        }
+
+        // Míření myší
+        this.angle = Math.atan2(mouseY - this.y, mouseX - this.x);
+
+        // Střelba
+        if (shooting && this.shootCooldown <= 0) {
+            this.shootCooldown = 600;
+            const bx = this.x + Math.cos(this.angle) * this.size;
+            const by = this.y + Math.sin(this.angle) * this.size;
+            this.bullets.push(new Bullet(bx, by, this.angle, false));
+        }
     }
 
     draw(ctx) {
